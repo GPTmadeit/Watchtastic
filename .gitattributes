@@ -1,0 +1,19 @@
+# Normalise line endings so the repo is identical regardless of who committed from where.
+* text=auto
+
+# gradlew is executed by /bin/sh on Linux and macOS. If it ever lands in a working tree
+# with CRLF endings the shebang breaks and it fails with "bad interpreter" — so pin it to
+# LF no matter what the contributor's core.autocrlf says.
+gradlew text eol=lf
+*.sh text eol=lf
+
+# Windows batch files need the opposite.
+*.bat text eol=crlf
+
+# Never touch binaries or the vendored schema.
+*.jar binary
+*.apk binary
+*.jks binary
+*.keystore binary
+*.png binary
+*.proto text eol=lf
