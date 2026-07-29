@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Themed-icon layer: the system tints this flat, so it is line art only — the lit
+     dial fill is dropped, because a tinted translucent disc would flatten into the
+     mark and erase the peaks. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:pathData="M81,54 L83.5,54"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeWidth="6" />
+    <path
+        android:pathData="M28,54a26,26 0 1,1 52,0a26,26 0 1,1 -52,0z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.2" />
+    <path
+        android:pathData="M38.6,64.6 L46.6,42.6 L54,54.8 L61.4,42.6 L69.4,64.6"
+        android:strokeColor="#FFFFFF"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="5.4" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M46.6,42.6 m-4.3,0 a4.3,4.3 0 1,0 8.6,0 a4.3,4.3 0 1,0 -8.6,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M61.4,42.6 m-4.3,0 a4.3,4.3 0 1,0 8.6,0 a4.3,4.3 0 1,0 -8.6,0z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M54,54.8 m-3.7,0 a3.7,3.7 0 1,0 7.4,0 a3.7,3.7 0 1,0 -7.4,0z" />
+</vector>

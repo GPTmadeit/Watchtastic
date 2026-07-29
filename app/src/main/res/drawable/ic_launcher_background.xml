@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Deep "ink" field from the Meshtastic neutral scale, lifted slightly behind the
+     dial so the green reads as emitted light on an OLED watch. Deliberately plain:
+     the foreground now carries a watch case and dial, and any horizon or texture
+     here would fight that silhouette. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="54"
+                android:centerY="44"
+                android:gradientRadius="74"
+                android:type="radial">
+                <item
+                    android:color="#FF33364A"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF2C2D3C"
+                    android:offset="0.45" />
+                <item
+                    android:color="#FF13141B"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

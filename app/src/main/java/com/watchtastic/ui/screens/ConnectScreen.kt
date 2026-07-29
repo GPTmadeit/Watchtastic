@@ -1,0 +1,282 @@
+package com.watchtastic.ui.screens
+
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.wear.compose.foundation.lazy.TransformingLazyColumn
+import androidx.wear.compose.foundation.lazy.rememberTransformingLazyColumnState
+import androidx.wear.compose.material3.Button
+import androidx.wear.compose.material3.ButtonDefaults
+import androidx.wear.compose.material3.CircularProgressIndicator
+import androidx.wear.compose.material3.Icon
+import androidx.wear.compose.material3.ListHeader
+import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.ScreenScaffold
+import androidx.wear.compose.material3.Text
+import com.watchtastic.mesh.model.DiscoveredRadio
+import com.watchtastic.mesh.model.LinkState
+import com.watchtastic.service.MeshService
+import com.watchtastic.ui.LocalAppGraph
+import com.watchtastic.ui.components.EmptyState
+import com.watchtastic.ui.components.SignalBars
+import com.watchtastic.ui.icons.WtIcons
+import com.watchtastic.mesh.model.SignalQuality
+import com.watchtastic.ui.theme.MeshPalette
+import kotlinx.coroutines.flow.catch
+
+/**
+ * Finding and pairing a radio.
+ *
+ * The scan is filtered on the Meshtastic service UUID, so this list only ever contains
+ * radios — no scrolling past headphones and TVs to find yours.
+ */
+@Composable
+fun ConnectScreen(onConnected: () -> Unit) {
+    val graph = LocalAppGraph.current
+    val context = LocalContext.current
+    val link by graph.repository.link.collectAsStateWithLifecycle()
+
+    val required = remember {
+        buildList {
+            add(Manifest.permission.BLUETOOTH_SCAN)
+            add(Manifest.permission.BLUETOOTH_CONNECT)
+            add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+    }
+
+    var hasPermissions by remember {
+        mutableStateOf(
+            required.all {
+                ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED
+            },
+        )
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { result ->
+        // Notifications are a nice-to-have; Bluetooth is not. Only the two BLE grants
+        // gate the scan.
+        hasPermissions = result[Manifest.permission.BLUETOOTH_SCAN] == true &&
+            result[Manifest.permission.BLUETOOTH_CONNECT] == true
+    }
+
+    var radios by remember { mutableStateOf<List<DiscoveredRadio>>(emptyList()) }
+    var scanError by remember { mutableStateOf<String?>(null) }
+
+    // Stop scanning once we're busy with a radio: a concurrent scan slows the connection
+    // down and drains the battery for no benefit. Keyed on a plain boolean rather than
+    // the state object, so the Syncing progress ticks don't restart the scan 40 times.
+    val shouldScan = hasPermissions && (link is LinkState.Idle || link is LinkState.Failed)
+
+    LaunchedEffect(shouldScan) {
+        if (!shouldScan) return@LaunchedEffect
+        scanError = null
+        graph.repository.scanner.scan()
+            .catch { scanError = it.message ?: "Scan failed" }
+            .collect { radios = it }
+    }
+
+    LaunchedEffect(link) {
+        if (link is LinkState.Connected) onConnected()
+    }
+
+    val listState = rememberTransformingLazyColumnState()
+
+    ScreenScaffold(scrollState = listState) { contentPadding ->
+        TransformingLazyColumn(
+            state = listState,
+            contentPadding = contentPadding,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            item { ListHeader { Text("Connect") } }
+
+            when {
+                !hasPermissions -> item {
+                    PermissionPrompt { permissionLauncher.launch(required.toTypedArray()) }
+                }
+
+                link is LinkState.Pairing -> item {
+                    BusyCard(
+                        title = "Pairing",
+                        detail = "Enter the PIN shown on your radio's screen.",
+                    )
+                }
+
+                link is LinkState.Connecting -> item {
+                    BusyCard(title = "Connecting", detail = (link as LinkState.Connecting).deviceName)
+                }
+
+                link is LinkState.Syncing -> item {
+                    val syncing = link as LinkState.Syncing
+                    BusyCard(
+                        title = "Syncing",
+                        detail = "Downloading node database…",
+                        progress = syncing.progress,
+                    )
+                }
+
+                else -> {
+                    if (link is LinkState.Failed) {
+                        item { FailureCard((link as LinkState.Failed).reason) }
+                    }
+                    if (!graph.repository.scanner.isBluetoothOn) {
+                        item {
+                            EmptyState(
+                                icon = WtIcons.Bluetooth,
+                                title = "Bluetooth is off",
+                                subtitle = "Turn it on in watch settings",
+                            )
+                        }
+                    } else if (scanError != null) {
+                        item { EmptyState(icon = WtIcons.Bluetooth, title = scanError!!) }
+                    } else if (radios.isEmpty()) {
+                        item {
+                            Column(
+                                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                Spacer(Modifier.height(10.dp))
+                                Text(
+                                    "Looking for radios…",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
+                    } else {
+                        items(radios.size, key = { radios[it].address }) { index ->
+                            val radio = radios[index]
+                            RadioRow(radio) {
+                                graph.haptics.select()
+                                // Permissions are guaranteed here — the scan that produced
+                                // this row required them — so this is the first safe
+                                // moment to bring the link service up.
+                                MeshService.start(context)
+                                graph.repository.connect(radio.address, radio.name)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RadioRow(radio: DiscoveredRadio, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = ButtonDefaults.filledTonalButtonColors(),
+        icon = {
+            Icon(
+                imageVector = WtIcons.Radio,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp),
+            )
+        },
+        label = { Text(radio.name, maxLines = 1) },
+        secondaryLabel = {
+            Text(
+                text = if (radio.bonded) "Paired · ${radio.rssi} dBm" else "${radio.rssi} dBm",
+                maxLines = 1,
+            )
+        },
+    )
+}
+
+@Composable
+private fun PermissionPrompt(onGrant: () -> Unit) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            text = "Watchtastic needs Bluetooth to reach your radio.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(10.dp))
+        Button(
+            onClick = onGrant,
+            modifier = Modifier.fillMaxWidth(),
+            label = { Text("Grant access") },
+        )
+    }
+}
+
+@Composable
+private fun BusyCard(title: String, detail: String, progress: Float? = null) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            if (progress != null) {
+                CircularProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.size(44.dp),
+                )
+                Text(
+                    "${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.labelSmall,
+                )
+            } else {
+                CircularProgressIndicator(modifier = Modifier.size(44.dp))
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text(title, style = MaterialTheme.typography.titleSmall)
+        Spacer(Modifier.height(2.dp))
+        Text(
+            text = detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun FailureCard(reason: String) {
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        SignalBars(SignalQuality.None)
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = reason,
+            style = MaterialTheme.typography.bodySmall,
+            color = MeshPalette.Danger,
+            textAlign = TextAlign.Center,
+        )
+    }
+}

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the small preference file that remembers which radio we pair with is worth
+     backing up. The node/message cache is disposable and re-syncs from the radio, so
+     nothing under the file domain is included. -->
+<full-backup-content>
+    <include
+        domain="sharedpref"
+        path="watchtastic_prefs.xml" />
+</full-backup-content>

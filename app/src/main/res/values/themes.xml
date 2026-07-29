@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Wear apps draw edge to edge on a black OLED panel; the window itself is
+         pure black so unlit pixels stay genuinely off. -->
+    <style name="Theme.Watchtastic" parent="@android:style/Theme.DeviceDefault">
+        <item name="android:windowBackground">@color/wt_black</item>
+        <item name="android:colorBackground">@color/wt_black</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+    </style>
+
+    <style name="Theme.Watchtastic.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/wt_ink_deep</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_splash</item>
+        <item name="postSplashScreenTheme">@style/Theme.Watchtastic</item>
+    </style>
+</resources>

@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Watchtastic mark: a mesh node, on a wrist.
+
+  Two ideas locked together. The outer form is a watch — round case, illuminated
+  dial, crown at three o'clock — and sitting on that dial is the Meshtastic idea:
+  twin LoRa-chirp peaks with a node at each vertex. The mark reads as "content on a
+  watch face", which is exactly what the app is.
+
+  It stays in the Meshtastic visual family without reproducing the project's logo.
+  Meshtastic's own mark is two SOLID chirp peaks forming an "M"; this is the same
+  chirp-peak language drawn as an OPEN stroked polyline with explicit node dots, so
+  it also reads as a mesh graph. Meshtastic's logo is a project trademark and is not
+  bundled with this app. Brand colours (#67EA94, #2C2D3C) are the published ones.
+
+  Laid out on the 108dp adaptive-icon canvas. The furthest point is the crown tip at
+  r=32.3, inside the 33dp guaranteed-visible radius, so Wear's circular launcher
+  mask never clips it.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Lit dial face. Low alpha so it reads as a display that is on, not as a
+         filled badge that would swallow the mark at small sizes. -->
+    <path
+        android:fillAlpha="0.11"
+        android:fillColor="#67EA94"
+        android:pathData="M27.5,54a26.5,26.5 0 1,1 53,0a26.5,26.5 0 1,1 -53,0z" />
+
+    <!-- Crown. Drawn before the case so the ring's stroke caps its inner end. -->
+    <path
+        android:pathData="M81,54 L83.5,54"
+        android:strokeColor="#67EA94"
+        android:strokeLineCap="round"
+        android:strokeWidth="5.6" />
+
+    <!-- Watch case. -->
+    <path
+        android:pathData="M28,54a26,26 0 1,1 52,0a26,26 0 1,1 -52,0z"
+        android:strokeColor="#67EA94"
+        android:strokeWidth="3" />
+
+    <!-- Twin chirp peaks. -->
+    <path
+        android:pathData="M38.6,64.6 L46.6,42.6 L54,54.8 L61.4,42.6 L69.4,64.6"
+        android:strokeColor="#67EA94"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="5" />
+
+    <!-- Mesh nodes at the vertices. -->
+    <path
+        android:fillColor="#C9FBDC"
+        android:pathData="M46.6,42.6 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0z" />
+    <path
+        android:fillColor="#C9FBDC"
+        android:pathData="M61.4,42.6 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0z" />
+    <path
+        android:fillColor="#67EA94"
+        android:pathData="M54,54.8 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0z" />
+</vector>

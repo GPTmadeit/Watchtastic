@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only the colours the framework needs before Compose starts (window background and
+     splash). The in-app palette lives in ui/theme/Theme.kt so it stays in one place. -->
+<resources>
+    <color name="wt_black">#FF000000</color>
+    <color name="wt_ink_deep">#FF13141B</color>
+</resources>

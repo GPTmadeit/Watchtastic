@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Splash icon. Same geometry as the launcher foreground on the same 108 viewport,
+     just rendered smaller — the system draws it inside a 240dp circle at 2/3 scale,
+     so reusing the proportions keeps launch and launcher visually identical. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="60dp"
+    android:height="60dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path
+        android:fillAlpha="0.13"
+        android:fillColor="#67EA94"
+        android:pathData="M27.5,54a26.5,26.5 0 1,1 53,0a26.5,26.5 0 1,1 -53,0z" />
+    <path
+        android:pathData="M81,54 L83.5,54"
+        android:strokeColor="#67EA94"
+        android:strokeLineCap="round"
+        android:strokeWidth="5.6" />
+    <path
+        android:pathData="M28,54a26,26 0 1,1 52,0a26,26 0 1,1 -52,0z"
+        android:strokeColor="#67EA94"
+        android:strokeWidth="3" />
+    <path
+        android:pathData="M38.6,64.6 L46.6,42.6 L54,54.8 L61.4,42.6 L69.4,64.6"
+        android:strokeColor="#67EA94"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:strokeWidth="5" />
+    <path
+        android:fillColor="#C9FBDC"
+        android:pathData="M46.6,42.6 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0z" />
+    <path
+        android:fillColor="#C9FBDC"
+        android:pathData="M61.4,42.6 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0z" />
+    <path
+        android:fillColor="#67EA94"
+        android:pathData="M54,54.8 m-3.5,0 a3.5,3.5 0 1,0 7,0 a3.5,3.5 0 1,0 -7,0z" />
+</vector>

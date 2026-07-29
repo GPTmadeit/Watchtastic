@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Mesh traffic stays on the device it was received on: only the paired-radio
+     preference travels to a new watch, never the message or node cache. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <include
+            domain="sharedpref"
+            path="watchtastic_prefs.xml" />
+    </cloud-backup>
+    <device-transfer>
+        <include
+            domain="sharedpref"
+            path="watchtastic_prefs.xml" />
+    </device-transfer>
+</data-extraction-rules>

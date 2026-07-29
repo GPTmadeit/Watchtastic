@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Watchtastic</string>
+
+    <!-- Notification channels. Individual notification copy is built in Notifier.kt,
+         where it depends on live link state. -->
+    <string name="chan_link_name">Mesh link</string>
+    <string name="chan_link_desc">Ongoing status of the connection to your Meshtastic radio</string>
+    <string name="chan_msg_name">Messages</string>
+    <string name="chan_msg_desc">Incoming mesh messages and alerts</string>
+    <string name="chan_node_name">New nodes</string>
+    <string name="chan_node_desc">When a node you have not seen before joins the mesh</string>
+</resources>

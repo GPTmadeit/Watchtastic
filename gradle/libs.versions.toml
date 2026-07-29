@@ -1,0 +1,73 @@
+[versions]
+agp = "8.13.2"
+kotlin = "2.3.21"
+protobufPlugin = "0.9.6"
+protobuf = "4.35.1"
+
+compileSdk = "36"
+minSdk = "33"
+targetSdk = "36"
+
+wearCompose = "1.6.2"
+composeUi = "1.9.5"
+wear = "1.4.0"
+wearOngoing = "1.1.0"
+wearInput = "1.2.0"
+wearToolingPreview = "1.0.0"
+
+# Pinned to the Android 16 / compileSdk 36 generation. The 1.19.x core and
+# 2.11.x lifecycle lines require AGP 9.1 + compileSdk 37, which would in turn
+# break protobuf-gradle-plugin (it still uses the removed BaseVariant API).
+activityCompose = "1.12.4"
+lifecycle = "2.10.0"
+coreKtx = "1.17.0"
+splashscreen = "1.2.0"
+coroutines = "1.11.0"
+serialization = "1.11.0"
+
+junit = "4.13.2"
+
+[libraries]
+# Wear Compose (Material 3 Expressive)
+wear-compose-material3 = { module = "androidx.wear.compose:compose-material3", version.ref = "wearCompose" }
+wear-compose-foundation = { module = "androidx.wear.compose:compose-foundation", version.ref = "wearCompose" }
+wear-compose-navigation = { module = "androidx.wear.compose:compose-navigation", version.ref = "wearCompose" }
+wear-compose-ui-tooling = { module = "androidx.wear.compose:compose-ui-tooling", version.ref = "wearCompose" }
+
+# Wear platform
+wear = { module = "androidx.wear:wear", version.ref = "wear" }
+wear-ongoing = { module = "androidx.wear:wear-ongoing", version.ref = "wearOngoing" }
+wear-input = { module = "androidx.wear:wear-input", version.ref = "wearInput" }
+wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wearToolingPreview" }
+
+# Compose core
+compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }
+compose-ui-tooling = { module = "androidx.compose.ui:ui-tooling", version.ref = "composeUi" }
+compose-ui-tooling-preview = { module = "androidx.compose.ui:ui-tooling-preview", version.ref = "composeUi" }
+
+# AndroidX
+androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "coreKtx" }
+androidx-activity-compose = { module = "androidx.activity:activity-compose", version.ref = "activityCompose" }
+androidx-splashscreen = { module = "androidx.core:core-splashscreen", version.ref = "splashscreen" }
+lifecycle-runtime-compose = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
+lifecycle-viewmodel-compose = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "lifecycle" }
+lifecycle-service = { module = "androidx.lifecycle:lifecycle-service", version.ref = "lifecycle" }
+
+# Kotlin
+coroutines-android = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-android", version.ref = "coroutines" }
+serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+
+# Meshtastic protobufs
+protobuf-javalite = { module = "com.google.protobuf:protobuf-javalite", version.ref = "protobuf" }
+protobuf-protoc = { module = "com.google.protobuf:protoc", version.ref = "protobuf" }
+
+# Test
+junit = { module = "junit:junit", version.ref = "junit" }
+coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
+kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+protobuf = { id = "com.google.protobuf", version.ref = "protobufPlugin" }
