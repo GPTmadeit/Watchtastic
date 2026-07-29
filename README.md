@@ -52,8 +52,6 @@ crown, LRA haptics), and works on any Wear OS 4+ device with BLE.
 - Signature-pinned to the running build, package-pinned, downgrades refused, and the
   install is always confirmed by the system installer — details in the
   [changelog](CHANGELOG.md)
-- Works without an API key; set `AppGraph.UPDATE_API_KEY` to use the documented Drive
-  API instead of the public folder listing
 
 ---
 
