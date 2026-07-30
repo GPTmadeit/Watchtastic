@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.3.0
+
+**Messages now interrupt like a text.** They were arriving silently in the notification
+stream instead of popping up. Two things caused it, and both had to change: the
+notification was built with `setSilent(true)`, and the channel had vibration disabled —
+Android only raises a heads-up card for a notification that actually alerts, however high
+its importance.
+
+The message channel id had to move to `mesh_messages_v2` to fix it. A channel's importance
+and vibration are frozen at creation; the system ignores later edits, and deleting and
+recreating an id restores its old settings. Anyone upgrading would otherwise have kept the
+silent channel forever. The old one is deleted so it doesn't linger in system settings.
+
+While in there, messages became proper conversations: `MessagingStyle` with the sender as
+a `Person`, so Wear stacks a thread into one card and shows who is talking — and a
+**Reply action right on the notification**. Dictate a reply and it goes out over LoRa
+without opening the app.
+
+**New nodes stay quiet**, as asked: `DEFAULT` importance so they file into the stream as a
+small card without seizing the screen, channel vibration off, and our own light haptic as
+the only thing you feel. They remain on a separate channel, so messages can interrupt
+while node discovery doesn't.
+
+Note the message buzz now belongs to the notification channel rather than to `Haptics` —
+the explicit `haptics.incoming()` call was removed, or one message would buzz twice.
+
+**Motion.** The app moves on Material 3 Expressive springs now
+(`MotionScheme.expressive()`), which re-times every component at once — buttons, cards,
+dialogs, the edge button, and the item morphing in `TransformingLazyColumn`. On top of
+that:
+
+- the **map sweeps like radar** — a rotating sweep gradient with a bright leading edge and
+  a comet tail, plus a beacon ring pulsing out of your own position
+- **scanning for radios** shows three sonar rings expanding out of the app mark instead of
+  a generic spinner
+- **signal bars** spring up on staggered stiffness so a change in quality ripples across
+  them, with colour crossfading separately
+- the **connection dot breathes** only while something is actually in flight, so a steady
+  dot honestly means settled rather than possibly stuck
+
 ## 1.2.0
 
 **Updates from the shared Drive folder.** Settings → Software update lists the release

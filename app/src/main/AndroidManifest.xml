@@ -72,6 +72,12 @@
             </intent-filter>
         </activity>
 
+        <!-- Receives the text the wearer dictates into a message notification's Reply
+             action. Not exported: only the system's notification shade triggers it. -->
+        <receiver
+            android:name=".service.NotificationReplyReceiver"
+            android:exported="false" />
+
         <service
             android:name=".service.MeshService"
             android:exported="false"

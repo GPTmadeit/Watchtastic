@@ -1,316 +1,226 @@
+<div align="center">
+
 # Watchtastic
 
-A standalone [Meshtastic](https://meshtastic.org) client for Wear OS. It talks to a
-Meshtastic radio directly over Bluetooth LE — no paired phone, no companion app.
+**A [Meshtastic](https://meshtastic.org) client that lives on your wrist.**
 
-Built for the Pixel Watch 4 (Wear OS 6, round 408×408 / 456×456 domed display, rotating
-crown, LRA haptics), and works on any Wear OS 4+ device with BLE.
+Talks to your radio directly over Bluetooth. No phone in the loop, no companion app,
+no signal required.
 
----
+[![Download](https://img.shields.io/github/v/release/GPTmadeit/Watchtastic?label=Download%20APK&style=for-the-badge&color=67EA94&labelColor=2C2D3C)](https://github.com/GPTmadeit/Watchtastic/releases/latest)
+[![Wear OS](https://img.shields.io/badge/Wear%20OS-4%2B-2C2D3C?style=for-the-badge)](https://wearos.google.com/)
+[![License](https://img.shields.io/badge/license-GPL--3.0-2C2D3C?style=for-the-badge)](LICENSE)
 
-## What it does
-
-**Connection**
-- BLE scan filtered on the Meshtastic service UUID, so only radios ever appear
-- System pairing flow for PIN-protected radios
-- Full config download (`want_config_id` → `config_complete_id`) with live progress
-- Automatic reconnect with capped exponential backoff; last-known state stays on screen
-- Foreground service + Wear *ongoing activity* chip keeps the link alive screen-off
-
-**Messaging**
-- Per-channel and direct conversations, unread tracking, notifications
-- Send via dictation, the system keyboard, canned quick replies, or emoji tapbacks
-- Delivery status per message: queued → sent → delivered, or failed with the reason
-- Reactions rendered inline on the message they target
-- Editable quick replies; per-channel mute; clear a thread with a long-press
-- Broadcast an alert or your position to a channel
-
-**Mesh**
-- Node list ordered by usefulness — favourites, then live, then most recently heard
-- Node detail: SNR, RSSI, hops, role, hardware, battery, voltage, channel utilisation,
-  air-time, environment telemetry, position
-- Favourite / mute / ignore / remove, request position, traceroute
-- Compass screen that points at a node using the watch's rotation-vector sensor
-- **Map** — every node and waypoint plotted by bearing and distance around you, crown to
-  zoom the range rings, heading-up or north-up, tap a blip to open that node
-- Waypoints: see what the mesh has shared, drop one at the watch's own GNSS fix
-- "Open in Maps" hands a node's coordinates to whatever mapping app the watch has
-
-**Radio control** (via `AdminMessage` to the local node)
-- Region, modem preset, hop limit, transmit enable, device role
-- Rename node (long + short name), channel mute, clear node DB, reboot, shut down
-
-**Watch-specific**
-- Feeds the watch's own GNSS fix to the radio as its position
-- Ambient-mode dimming
-- Haptic vocabulary distinct per outcome (see below)
-- Notifications for incoming messages, and for nodes appearing on the mesh for the first
-  time — each on its own channel so either can be silenced alone
-
-**Self-update**
-- Checks a shared Google Drive folder for newer release APKs, downloads and installs
-- Signature-pinned to the running build, package-pinned, downgrades refused, and the
-  install is always confirmed by the system installer — details in the
-  [changelog](CHANGELOG.md)
+</div>
 
 ---
 
-## Design notes
+## What is this?
 
-### Why it feels like a watch app, not a shrunken phone app
+Meshtastic radios build a long-range mesh network over LoRa — off-grid text messaging
+with no cell service, no wifi, no infrastructure. Normally you drive one from a phone.
 
-**The domed display.** The Pixel Watch 4's Actua 360 panel curves away at the rim, so
-anything near the edge is optically distorted. Layout leans on `ScreenScaffold`'s
-round-aware content padding, and the compass dial keeps its ticks ~8% inside the rim.
+Watchtastic puts the whole thing on your watch. The radio can stay in your pack while you
+read messages, check who's on the mesh, and navigate to them from your wrist.
 
-**The crown.** `TransformingLazyColumn` carries rotary scrolling with per-detent haptics
-by default. Long enumerations that would be miserable to scrub with a fingertip — 37 LoRa
-regions, 17 modem presets — open a full-screen snapping `Picker` instead.
+## What you can do with it
 
-**Gestures.** Navigation is a flat back stack driven by `SwipeDismissableNavHost`, so the
-right-edge swipe pops exactly as it does in first-party apps. Long-press is the secondary
-verb throughout: on a message it reacts, on a channel it mutes.
-
-**Reply cost.** The three reply paths are ordered by how long they take: tapback (one
-tap), canned phrase (two), dictation/keyboard (the edge button). If replying is slow,
-people reach for their phone instead.
-
-### Why the map has no tiles
-
-The map is a vector plot — range rings, blips, bearings — not a street map. A tiled map
-needs network and an API key in exactly the situation Meshtastic exists for: a valley
-with no cell service. It would be dead weight precisely when it matters.
-
-So the map draws what the mesh already told us, entirely offline: every node and waypoint
-placed by true bearing and great-circle distance from your position, on rings the crown
-zooms from 250 m to 100 km. Out-of-range blips pin to the rim as hollow markers, so you
-can tell the difference between "nothing there" and "further than this scale". Labels
-de-collide greedily, nearest first and nodes before waypoints, so a dense mesh degrades
-to fewer readable captions rather than a pile of overlapping text.
-
-When street context genuinely helps, node detail hands the coordinates to the watch's own
-mapping app via a `geo:` intent — and hides the action when nothing can handle it.
-
-### Haptics
-
-The wrist is an output channel, so outcomes are distinguishable without looking. Effects
-are composed from `VibrationEffect.Composition` primitives — the Pixel Watch's linear
-resonant actuator renders real amplitude envelopes — with predefined-effect and waveform
-fallbacks for devices that lack primitive support.
-
-| Signature | Meaning |
+| | |
 |---|---|
-| `tick` | value stepped, compass bearing reached |
-| `select` / `heavy` | tap landed / destructive action armed |
-| `sent` | quick rise + tick — message departing |
-| `delivered` | two light ticks — mesh acknowledged |
-| `failed` | quick fall + thud |
-| `incoming` | tick + click, distinct from the system buzz |
-| `alert` | slow rise + three clicks, meant to be felt through a sleeve |
-| `connected` / `disconnected` | rise / fall |
+| 💬 **Message** | Channels and direct messages. Dictate, type, tap a saved phrase, or fire off an emoji. Every message shows whether it actually got there. |
+| 🔔 **Get alerted** | Messages pop up like a text — and you can reply straight from the notification without opening the app. |
+| 🗺️ **See the mesh** | An offline map of everyone around you, plotted by real bearing and distance. Twist the crown to zoom from 250 m to 100 km. |
+| 🧭 **Navigate** | Point the watch at any node and walk. A compass needle, a distance, and a tick on your wrist when you're facing the right way. |
+| 📍 **Drop waypoints** | Mark a spot using the watch's own GPS and share it with everyone on the mesh. |
+| 📡 **Check your radio** | Battery, signal, air time, hop counts, firmware — and change region, preset or hop limit without digging out your phone. |
+| 🔄 **Update itself** | Watchtastic can check for and install its own updates. |
 
-Scrolling is deliberately left alone — the rotary scroller already provides detents, and
-doubling up feels mushy.
-
-### Icons
-
-Original set, drawn as `ImageVector`s on a 24 dp grid with a 2 dp round-capped stroke.
-Material's core set has no vocabulary for hops, SNR, traceroute or mesh nodes, and mixing
-filled Material glyphs with a stroked app mark looks like two apps in one.
-See `docs/icons.html` for the full sheet.
-
-**The app icon** locks two ideas together: the outer form is a *watch* — round case, lit
-dial, crown at three o'clock — and sitting on that dial is the *mesh* — twin LoRa-chirp
-peaks with a node at each vertex. It reads as content on a watch face, which is what the
-app is.
-
-It stays in the Meshtastic visual family without reproducing the project's mark.
-Meshtastic's own logo is twin **solid** chirp peaks forming an "M" (read variously as
-mountains and tents); this is the same chirp-peak language drawn as an **open stroked
-polyline with explicit node dots**, so it also reads as a mesh graph, on dark ink rather
-than green. Published brand colours throughout (`#67EA94` green, `#2C2D3C` ink).
-Meshtastic's actual logo is a project trademark and is **not** bundled with this app.
-
-The full lockup is used for the launcher and splash. The notification glyph and the
-in-app `WtIcons.Mesh` drop back to the peaks alone — at 18–24 px the case and crown
-collapse into noise, and the peaks carry the identity on their own.
+Built for the **Pixel Watch 4** — the domed screen, the rotating crown, and the haptic
+motor all get used properly — but it runs on any **Wear OS 4+** watch with Bluetooth.
 
 ---
 
-## Architecture
+## Getting it on your watch
 
+### The easy way — WatchPush 📲
+
+Installing anything on a watch is normally a laptop-and-terminal job. It isn't anymore.
+
+**[WatchPush](https://github.com/GPTmadeit/WatchPush)** is a companion app that sideloads
+APKs onto your watch straight from your phone. No computer, no ADB, no cables.
+
+1. **[Download WatchPush](https://github.com/GPTmadeit/WatchPush/releases/latest)** and
+   install it on your Android phone.
+2. **[Download the Watchtastic APK](https://github.com/GPTmadeit/Watchtastic/releases/latest)**
+   — grab `Watchtastic-<version>-release.apk`.
+3. On your watch, turn on **Settings → Developer options → Wireless debugging**.
+4. Open WatchPush, tap **Scan network**, pair with the watch, pick the APK, and hit
+   **Install on watch**.
+
+That's it. Watchtastic appears in your watch's app list.
+
+> **Don't see Developer options?** On the watch go to **Settings → System → About** and
+> tap **Build number** seven times.
+
+### The manual way — ADB
+
+If you'd rather use a computer:
+
+```bash
+adb connect <watch-ip>:<port>
+adb install -r Watchtastic-1.3.0-release.apk
 ```
-com.watchtastic
-├── mesh/
-│   ├── ble/    GattLink · RadioSession · BleScanner · BondManager
-│   ├── MeshConstants · PacketRouter · MeshRepository · MeshStore
-│   └── model/  domain types
-├── platform/   Haptics · LocationProvider · Prefs
-├── service/    MeshService (foreground) · Notifier (+ ongoing activity)
-├── di/         AppGraph — hand-wired, application-scoped
-└── ui/         theme · icons · components · nav · screens
-```
-
-**`GattLink`** funnels every GATT operation through a mutex onto a `CompletableDeferred`.
-Android's stack tolerates exactly one outstanding operation per connection, and issuing a
-second read before the first completes is the classic cause of silent BLE stalls — the
-lock makes that structurally impossible.
-
-**`RadioSession`** implements the order-sensitive handshake: connect → discover → MTU 512
-→ subscribe to `FromNum` *before* asking for anything → drain the stale `FromRadio` FIFO →
-`want_config_id` → drain again. `FromRadio` is a FIFO behind one characteristic, read in a
-loop until a read returns empty; `FromNum` only says *that* something is waiting, so every
-notification means "drain again". Drains hold their own lock so a notification arriving
-mid-drain can't interleave reads and mistake the other loop's terminator for its own.
-
-**`MeshStore`** keeps state in `StateFlow`s and snapshots to one debounced JSON file
-(atomic write-then-rename). A watch mesh is a few hundred nodes and a bounded message
-history — a relational store would cost more in build complexity than it repays, and the
-app still opens fully populated before the radio reconnects.
-
-**No DI framework, no Room, no Play Services.** One of each collaborator, one lifetime,
-so `AppGraph` *is* the dependency graph. Keeps annotation processors out of the build and
-the app installable on any Wear OS device.
 
 ---
 
-## Building
+## First run
+
+1. Open Watchtastic and tap **Grant access** — it needs Bluetooth to reach your radio.
+2. It scans automatically. Only Meshtastic radios show up, so the list stays short.
+3. Tap yours. If it asks to pair, the PIN is on the radio's own screen.
+4. Wait for the sync — it's pulling down the node database and your channels.
+
+Done. You're on the mesh.
+
+### Worth turning on
+
+- **Settings → Share watch GPS** — hands the watch's own GPS to your radio, so a radio
+  without a GPS module can still report an accurate position.
+- **Settings → Quick replies** — edit the phrases you can send in two taps.
+- **Long-press a channel** to mute it on the watch, without affecting anyone else.
+
+---
+
+## Good to know
+
+**It works with any Meshtastic radio.** Heltec, RAK, T-Beam, LilyGo, Station G — if it
+speaks the Meshtastic Bluetooth API, it works.
+
+**The map has no streets, on purpose.** A tile map needs a data connection, and the whole
+reason you own a Meshtastic radio is being somewhere without one. Instead the map draws
+what the mesh already told you — who's out there, which direction, how far — and works
+just as well in a valley with no signal. For street context on a specific node, node
+detail can hand its coordinates to Google Maps.
+
+**Messages are capped at 200 characters.** That's a LoRa limit, not ours.
+
+**Battery.** Watchtastic holds a Bluetooth connection in the background so it can hear
+messages with the screen off. That costs some battery. Settings → **Disconnect** drops the
+link without forgetting your radio.
+
+**Some things stay on your phone.** Creating or re-keying channels needs QR codes and
+encryption keys, which a 1.2" screen isn't the place for. Set those up in the official
+Meshtastic app; Watchtastic uses whatever your radio already has.
+
+---
+
+## Something not working?
+
+| Problem | Try this |
+|---|---|
+| **App won't install** | Your watch needs "install unknown apps" allowed. WatchPush walks you through it. |
+| **No radios found** | Bluetooth on? Radio powered and in range? Bluetooth enabled in the radio's own settings? |
+| **Stuck on "Pairing"** | The PIN is displayed on the radio. If it never appears, forget the device in your watch's Bluetooth settings and retry. |
+| **Messages not popping up** | Watch **Settings → Apps → Watchtastic → Notifications**, and check the *Messages* channel isn't silenced. |
+| **Keeps reconnecting** | Normal at the edge of range — it backs off and retries. Check the radio's battery. |
+
+Still stuck? [Open an issue](https://github.com/GPTmadeit/Watchtastic/issues) and include
+your watch model and radio.
+
+---
+
+<details>
+<summary><h2 style="display:inline">For developers</h2></summary>
+
+### Build
 
 ```bash
 ./gradlew :app:assembleDebug
 ```
 
-Requires JDK 17 and Android SDK 36. Artefacts are named for what they are:
+JDK 17 and Android SDK 36. Output is named for what it is —
+`Watchtastic-1.3.0-release.apk`.
 
-```
-app/build/outputs/apk/debug/Watchtastic-1.0.0-debug.apk
-app/build/outputs/apk/release/Watchtastic-1.0.0-release.apk
-```
-
-The debug APK is signed with the standard debug key and installs straight away:
-
-```bash
-adb -s <watch> install -r app/build/outputs/apk/debug/Watchtastic-1.0.0-debug.apk
-```
-
-### Release signing
-
-Release builds are signed only if a `keystore.properties` exists at the repo root. It is
-gitignored along with `*.jks`, so credentials never enter version control. Without it the
-release variant still builds — but it comes out unsigned, and Android refuses to install
-an unsigned APK with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`.
-
-A **development** keystore is already present (`watchtastic.jks`, all passwords
-`watchtastic`) so sideloading works out of the box. It is fine for testing on your own
-watch and nothing else.
-
-**Before publishing, replace it.** Generate a key only you hold:
+Release builds sign only if a `keystore.properties` exists at the repo root (gitignored,
+along with `*.jks`). Without one the release variant still builds but comes out unsigned,
+and Android refuses to install it with `INSTALL_PARSE_FAILED_NO_CERTIFICATES`.
 
 ```bash
 keytool -genkeypair -v -keystore release.jks -keyalg RSA -keysize 4096 \
   -validity 10000 -alias watchtastic
 ```
 
-Point `keystore.properties` at it, and back the file up somewhere durable — Play requires
-every future update to be signed with the same key, and losing it means you cannot ship
-an update to existing installs. Better still, enrol in Play App Signing so Google holds
-the app signing key and this one is only an upload key.
-
-Signing schemes are v2 + v3 with v1 disabled: v1 (JAR signing) is only needed below
-API 24, and this app is minSdk 33. `apksigner` will report v3 alone for that reason —
-with a min SDK of 33 it omits the older blocks because every target device supports v3.
-
-```bash
-./gradlew :app:assembleRelease
+```properties
+storeFile=release.jks
+storePassword=…
+keyAlias=watchtastic
+keyPassword=…
 ```
 
-Release is ~3.8 MB minified. The version lives in one place, `appVersionName` in
-`app/build.gradle.kts`, and drives both the manifest and the APK filename.
+Back that keystore up. The self-updater only installs an APK whose signing certificate
+matches the running app's, so losing the key means you can never ship an update that
+existing installs will accept.
 
-### Toolchain pinning
+### Architecture
 
-AGP is held at 8.13.2 and AndroidX at the Android-16 (compileSdk 36) generation. The
-newer `androidx.core` 1.19 / `lifecycle` 2.11 lines require AGP 9.1 + compileSdk 37, and
-AGP 9 removes the `BaseVariant` API that `protobuf-gradle-plugin` still uses. Moving up
-means replacing the protobuf codegen path first.
+```
+com.watchtastic
+├── mesh/      BLE transport, packet routing, domain state
+│   └── ble/   GattLink · RadioSession · BleScanner · BondManager
+├── platform/  Haptics · LocationProvider · Prefs
+├── service/   Foreground service, notifications, ongoing activity
+├── update/    Drive-hosted update check and installer
+├── di/        AppGraph — hand-wired, application-scoped
+└── ui/        theme · icons · components · nav · screens
+```
+
+**`GattLink`** funnels every GATT operation through a mutex onto a `CompletableDeferred`.
+Android tolerates exactly one outstanding operation per connection, and issuing a second
+read before the first completes is the classic cause of silent BLE stalls.
+
+**`RadioSession`** implements the order-sensitive handshake: connect → discover → MTU 512
+→ subscribe to `FromNum` *before* asking for anything → drain the stale `FromRadio` FIFO →
+`want_config_id` → drain again. `FromNum` only says *that* something is waiting, so every
+notification means "drain again".
+
+**`MeshStore`** keeps state in `StateFlow`s and snapshots to one debounced JSON file. A
+watch mesh is a few hundred nodes and a bounded history; a relational store would cost
+more in build complexity than it repays.
+
+No DI framework, no Room, no Play Services — so it installs on any Wear OS device.
+
+### Config safety
+
+Two rules worth knowing before touching radio settings:
+
+- **Config edits start from the radio's own last-sent proto.** `set_config` replaces
+  rather than merges, so an edit rebuilt from the values this app displays would reset
+  `tx_power`, `channel_num`, `override_frequency` and everything else.
+- **Channel mute is local to the watch.** Muting device-side means a `set_channel` write,
+  and `ChannelSettings` is likewise replace-not-merge — sending one back without the PSK
+  (which this app never stores) would wipe the channel's encryption key.
 
 ### Protobufs
 
-The Meshtastic `.proto` definitions are vendored under `app/src/main/proto/meshtastic/`
-from [meshtastic/protobufs](https://github.com/meshtastic/protobufs) and compiled to
-`protobuf-javalite` at build time into `org.meshtastic.proto`. Only the transitive closure
-needed by the client API is included. To update, copy in the newer `.proto` files and
-rebuild.
+Vendored under `app/src/main/proto/meshtastic/` from
+[meshtastic/protobufs](https://github.com/meshtastic/protobufs), compiled to
+`protobuf-javalite` at build time. To update, copy in the newer `.proto` files and rebuild.
+
+### Toolchain
+
+AGP is held at 8.13.2 and AndroidX at the compileSdk 36 generation. Newer `core` and
+`lifecycle` require AGP 9.1, and AGP 9 removes the `BaseVariant` API that
+`protobuf-gradle-plugin` still uses. Moving up means replacing the protobuf codegen first.
+
+</details>
 
 ---
 
-## Status
-
-Everything above is implemented and reachable from the UI — no feature exists in the
-repository without a way to trigger it. Both variants compile clean with zero Kotlin
-warnings and zero lint errors.
-
-### Verified by running it
-
-On a Wear OS 4 (API 34) emulator, 454×454 round, in **both** the debug and the minified
-release build:
-
-- cold launch, the runtime permission flow, and the foreground service reaching
-  `isForeground=true` with `types=connectedDevice`
-- every screen rendering with seeded data: connect, home, conversations, chat, nodes,
-  node detail, compass, map, channels, waypoints, radio status, settings, radio config
-- dropping a waypoint end to end — through the real Wear text-input surface — and seeing
-  it land in your own list attributed to "You"
-- tapping a map blip opening the right node's detail (hit-testing math)
-- swipe-to-dismiss back navigation, unread counts clearing on read, ambient dimming
-- derived values against known inputs — haversine distance, compass bearing, uptime
-  formatting, and battery 101 rendering as "External power"
-- R8 leaves the release build working; protobuf and kotlinx.serialization survive
-  minification
-
-### Not verified
-
-**No physical radio has been connected.** The BLE layer is written to the published
-[client API](https://meshtastic.org/docs/development/device/client-api/) and the current
-protobuf schema, and the emulator has no Meshtastic device to talk to — so the GATT
-handshake, PIN bonding, config download and admin writes remain unexercised. That is the
-part to watch on first real use.
-
-**Crown zoom on the map is untested.** The Wear emulator has no way to inject rotary
-events (`adb shell input` has no rotary source), so the handler is wired and compiles but
-has only ever been exercised by reading it. Everything else on that screen is verified.
-
-Two decisions worth knowing about, both made to avoid destroying radio state:
-
-- **Config edits start from the radio's own last-sent proto.** `set_config` replaces the
-  whole message rather than merging, so an edit rebuilt from the handful of values this
-  app displays would silently reset `tx_power`, `channel_num`, `override_frequency` and
-  everything else. Edits go out as `existing.toBuilder()`.
-- **Channel mute is local to the watch.** Muting device-side means a `set_channel` write,
-  and `ChannelSettings` is likewise replace-not-merge — sending one back without the PSK
-  (which this app deliberately never stores) would wipe the channel's encryption key.
-  Muting on the wrist is also what a wearer actually wants: quiet here, unchanged for
-  every other client on the radio.
-
-Deliberately out of scope: channel creation and re-keying (needs PSK entry and QR/URL
-exchange — a camera and a keyboard the watch doesn't have), MQTT proxying, and firmware
-OTA. Use the phone or desktop client for those; Watchtastic uses whatever the radio
-already has.
-
 ## Licence
 
-**GPL-3.0.** See [LICENSE](LICENSE).
-
-That choice isn't arbitrary. The `.proto` files under `app/src/main/proto/meshtastic/`
-are vendored from [meshtastic/protobufs](https://github.com/meshtastic/protobufs), which
-is GPL-3.0, and they are compiled into this app — so the resulting binary is a derivative
-work and inherits those terms. The official Meshtastic Android client is GPL-3.0 for the
-same reason. Anything permissive here would be a licence violation rather than a
-preference.
-
-Practically, that means: if you distribute a build of this app, you must also offer the
-corresponding source under GPL-3.0.
+GPL-3.0 — see [LICENSE](LICENSE). The vendored `.proto` files are © Meshtastic under the
+same licence.
 
 "Meshtastic" and the Meshtastic logo are trademarks of the Meshtastic project. This is an
-independent client, not affiliated with or endorsed by it, and the app icon is an
-original mark rather than a reproduction of theirs — see the design notes above.
+independent client, not affiliated with or endorsed by it. The Watchtastic mark is an
+original design in the same visual family, not a reproduction.

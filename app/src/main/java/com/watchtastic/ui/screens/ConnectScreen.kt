@@ -4,10 +4,18 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,6 +28,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -158,7 +167,7 @@ fun ConnectScreen(onConnected: () -> Unit) {
                                 Modifier.fillMaxWidth().padding(vertical = 12.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
-                                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+                                ScanPulse()
                                 Spacer(Modifier.height(10.dp))
                                 Text(
                                     "Looking for radios…",
@@ -208,6 +217,49 @@ private fun RadioRow(radio: DiscoveredRadio, onClick: () -> Unit) {
             )
         },
     )
+}
+
+/**
+ * Three rings expanding out of the app mark, a third of a cycle apart.
+ *
+ * A generic spinner says "busy"; this says "transmitting and listening", which is
+ * literally what a BLE scan is doing. The mark sits still at the centre so the screen
+ * still identifies the app while it waits.
+ */
+@Composable
+private fun ScanPulse() {
+    val transition = rememberInfiniteTransition(label = "scan")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "scanPhase",
+    )
+    val ringColor = MeshPalette.MeshGreen
+
+    Box(Modifier.size(64.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val maxRadius = size.minDimension / 2f
+            repeat(3) { index ->
+                // Stagger by a third of a cycle, wrapping so rings are evenly spaced.
+                val ringPhase = (phase + index / 3f) % 1f
+                drawCircle(
+                    color = ringColor.copy(alpha = (1f - ringPhase) * 0.5f),
+                    radius = maxRadius * (0.22f + ringPhase * 0.78f),
+                    style = Stroke(width = 2f),
+                )
+            }
+        }
+        Icon(
+            imageVector = WtIcons.Mesh,
+            contentDescription = null,
+            tint = ringColor,
+            modifier = Modifier.size(22.dp),
+        )
+    }
 }
 
 @Composable

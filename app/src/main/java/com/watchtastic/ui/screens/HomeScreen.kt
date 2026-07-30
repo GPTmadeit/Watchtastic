@@ -26,7 +26,7 @@ import androidx.wear.compose.material3.Text
 import com.watchtastic.mesh.MeshConstants
 import com.watchtastic.mesh.model.LinkState
 import com.watchtastic.ui.LocalAppGraph
-import com.watchtastic.ui.components.StatusDot
+import com.watchtastic.ui.components.PulseDot
 import com.watchtastic.ui.components.rememberNow
 import com.watchtastic.ui.icons.WtIcons
 import com.watchtastic.ui.theme.MeshPalette
@@ -148,6 +148,12 @@ private fun LinkCard(
     total: Int,
     onClick: () -> Unit,
 ) {
+    val inFlight = link is LinkState.Connecting ||
+        link is LinkState.Syncing ||
+        link is LinkState.Pairing ||
+        link is LinkState.Reconnecting ||
+        link is LinkState.Scanning
+
     val (dotColor, title) = when (link) {
         is LinkState.Connected -> MeshPalette.MeshGreen to "Connected"
         is LinkState.Syncing -> MeshPalette.Amber to "Syncing ${(link.progress * 100).toInt()}%"
@@ -171,9 +177,11 @@ private fun LinkCard(
             Column(Modifier.weight(1f)) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
+                    horizontalArrangement = Arrangement.spacedBy(1.dp),
                 ) {
-                    StatusDot(dotColor)
+                    // Pulses only while something is actually in flight, so a steady dot
+                    // genuinely means "settled" rather than "possibly stuck".
+                    PulseDot(color = dotColor, active = inFlight)
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleSmall,

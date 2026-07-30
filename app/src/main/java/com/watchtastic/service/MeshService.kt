@@ -174,7 +174,10 @@ class MeshService : LifecycleService() {
                     channel?.displayName ?: "Channel $index"
                 }
 
-                graph.haptics.incoming()
+                // No explicit haptic here: the message channel now vibrates in order to
+                // raise a heads-up card, and playing our own on top would buzz twice for
+                // one message. New-node alerts keep their haptic because that channel is
+                // deliberately silent.
                 graph.notifier.postMessage(message, sender, conversationTitle)
                 graph.notifier.updateLink(graph.repository.link.value, graph.store.totalUnread())
             }

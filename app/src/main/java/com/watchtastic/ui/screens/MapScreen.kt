@@ -4,7 +4,14 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.focusable
@@ -25,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathEffect
@@ -153,6 +161,29 @@ fun MapScreen(onOpenNode: (Int) -> Unit) {
 
     val textMeasurer = rememberTextMeasurer()
 
+    // A slow radar sweep and a beacon pulse. Both are decorative, but they answer a real
+    // question at a glance — "is this screen live, or frozen on stale data?" — which
+    // matters when the honest answer is often "nothing has moved in ten minutes".
+    val motion = rememberInfiniteTransition(label = "mapMotion")
+    val sweep by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 4_200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "sweep",
+    )
+    val beacon by motion.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2_400, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "beacon",
+    )
+
     val ringColor = MaterialTheme.colorScheme.outlineVariant
     val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
     val northColor = MaterialTheme.colorScheme.onSurface
@@ -223,6 +254,7 @@ fun MapScreen(onOpenNode: (Int) -> Unit) {
                 val radius = size.minDimension / 2f * PLOT_FRACTION
 
                 drawRangeRings(center, radius, ringColor)
+                drawRadarSweep(center, radius, sweep)
 
                 // North marker rides the rim and rotates opposite the map.
                 rotate(degrees = -rotation, pivot = center) {
@@ -245,7 +277,13 @@ fun MapScreen(onOpenNode: (Int) -> Unit) {
                     if (!clamped) labels += blip to point
                 }
 
-                // You, at the centre.
+                // You, at the centre — with a beacon ring breathing outward.
+                drawCircle(
+                    color = MeshPalette.MeshGreen.copy(alpha = (1f - beacon) * 0.40f),
+                    radius = 6f + beacon * 22f,
+                    center = center,
+                    style = Stroke(width = 2f),
+                )
                 drawCircle(MeshPalette.MeshGreen.copy(alpha = 0.22f), radius = 11f, center = center)
                 drawCircle(MeshPalette.MeshGreen, radius = 4.5f, center = center)
 
@@ -383,6 +421,38 @@ private fun DrawScope.drawRangeRings(center: Offset, radius: Float, color: Color
                 (-cos(angle) * outer).toFloat(),
             ),
             strokeWidth = 2f,
+        )
+    }
+}
+
+/**
+ * The rotating sweep.
+ *
+ * A sweep gradient that is opaque at its leading edge and transparent a fraction of a
+ * turn behind it, rotated as a whole — which is exactly the comet tail a radar display
+ * leaves, and costs one draw call rather than a stack of fading wedges.
+ */
+private fun DrawScope.drawRadarSweep(center: Offset, radius: Float, degrees: Float) {
+    rotate(degrees = degrees, pivot = center) {
+        drawCircle(
+            brush = Brush.sweepGradient(
+                colorStops = arrayOf(
+                    0.00f to MeshPalette.MeshGreen.copy(alpha = 0.26f),
+                    0.12f to MeshPalette.MeshGreen.copy(alpha = 0.05f),
+                    0.22f to Color.Transparent,
+                    1.00f to Color.Transparent,
+                ),
+                center = center,
+            ),
+            radius = radius,
+            center = center,
+        )
+        // Bright leading edge, so the direction of travel is unambiguous.
+        drawLine(
+            color = MeshPalette.MeshGreen.copy(alpha = 0.55f),
+            start = center,
+            end = center + Offset(0f, -radius),
+            strokeWidth = 1.5f,
         )
     }
 }

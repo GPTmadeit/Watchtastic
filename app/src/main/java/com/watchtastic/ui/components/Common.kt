@@ -1,11 +1,23 @@
 package com.watchtastic.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -14,10 +26,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,7 +93,13 @@ fun NodeAvatar(
     }
 }
 
-/** Four ascending bars, lit according to link quality. */
+/**
+ * Four ascending bars, lit according to link quality.
+ *
+ * Each bar springs up on its own slightly different stiffness, so a change in signal
+ * ripples left to right instead of snapping. Colour crossfades separately — a link
+ * degrading from green to amber reads as a slide rather than a jump cut.
+ */
 @Composable
 fun SignalBars(quality: SignalQuality, modifier: Modifier = Modifier) {
     val lit = when (quality) {
@@ -95,22 +115,88 @@ fun SignalBars(quality: SignalQuality, modifier: Modifier = Modifier) {
         SignalQuality.Fair -> MeshPalette.Amber
         else -> MeshPalette.MeshGreen
     }
+    val dim = MaterialTheme.colorScheme.outlineVariant
+
     Row(
         modifier = modifier,
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         repeat(4) { index ->
+            val isLit = index < lit
+            val fullHeight = 4 + index * 3
+            val height by animateDpAsState(
+                targetValue = if (isLit) fullHeight.dp else (fullHeight * 0.45f).dp,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioMediumBouncy,
+                    // Staggered stiffness is what produces the ripple; identical springs
+                    // would just move four bars in lockstep.
+                    stiffness = Spring.StiffnessMedium - index * 90f,
+                ),
+                label = "bar$index",
+            )
+            val color by animateColorAsState(
+                targetValue = if (isLit) tint else dim,
+                animationSpec = tween(durationMillis = 320),
+                label = "barColor$index",
+            )
             Box(
                 Modifier
                     .width(3.dp)
-                    .height((4 + index * 3).dp)
+                    .height(height)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(
-                        if (index < lit) tint else MaterialTheme.colorScheme.outlineVariant,
-                    ),
+                    .background(color),
             )
         }
+    }
+}
+
+/**
+ * A status dot that breathes while something is in progress.
+ *
+ * The expanding ring is the difference between "the app is working on it" and "the app
+ * has frozen" — on a screen this small there is no room for a progress bar next to every
+ * piece of state, but a pulse costs nothing and is readable at a glance.
+ */
+@Composable
+fun PulseDot(
+    color: Color,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    size: Int = 8,
+) {
+    val transition = rememberInfiniteTransition(label = "pulse")
+    val phase by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "pulsePhase",
+    )
+
+    Box(
+        modifier = modifier.size((size * 3).dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (active) {
+            Canvas(Modifier.fillMaxSize()) {
+                val base = size.dp.toPx() / 2f
+                // Ring expands outward and fades as it goes, like a sonar return.
+                drawCircle(
+                    color = color.copy(alpha = (1f - phase) * 0.45f),
+                    radius = base + phase * base * 3.2f,
+                    style = Stroke(width = 2f),
+                )
+            }
+        }
+        Box(
+            Modifier
+                .size(size.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
     }
 }
 

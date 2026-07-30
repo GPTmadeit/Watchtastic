@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.wear.compose.material3.ColorScheme
 import androidx.wear.compose.material3.MaterialTheme
+import androidx.wear.compose.material3.MotionScheme
 
 /**
  * Meshtastic's brand anchors, extended into a full Wear Material 3 scheme.
@@ -84,8 +85,15 @@ private val WatchtasticColors = ColorScheme(
 fun WatchtasticTheme(content: @Composable () -> Unit) {
     // Wear Material 3's default typography is already tuned per screen size and is
     // deliberately left alone; overriding it would break its responsive scaling.
+    //
+    // The motion scheme is not left alone. `expressive()` swaps Material's duration-based
+    // easing for spring physics across every component at once — buttons, cards, dialogs,
+    // the edge button, and the morphing in TransformingLazyColumn. One line changes how
+    // the whole app moves, and springs are what make a watch UI feel like it has weight
+    // rather than like it is fading between slides.
     MaterialTheme(
         colorScheme = WatchtasticColors,
+        motionScheme = MotionScheme.expressive(),
         content = content,
     )
 }

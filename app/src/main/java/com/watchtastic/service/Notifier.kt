@@ -11,7 +11,10 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.app.Person
+import androidx.core.app.RemoteInput
 import androidx.core.content.ContextCompat
+import com.watchtastic.mesh.model.ConversationKey
 import androidx.wear.ongoing.OngoingActivity
 import androidx.wear.ongoing.Status
 import com.watchtastic.MainActivity
@@ -32,11 +35,28 @@ import com.watchtastic.mesh.model.LinkState
 class Notifier(private val context: Context) {
 
     companion object {
+        /** Two taps, echoing the "incoming" signature in [com.watchtastic.platform.Haptics]. */
+        private val MESSAGE_VIBRATION = longArrayOf(0, 40, 90, 110)
+
         const val LINK_CHANNEL_ID = "mesh_link"
-        const val MESSAGE_CHANNEL_ID = "mesh_messages"
+
+        /**
+         * Bumped to `_v2` deliberately. A channel's importance and vibration are fixed at
+         * creation — the system ignores later edits, and recreating a deleted channel
+         * restores its old settings — so anyone upgrading from 1.2.0 would have kept the
+         * silent, never-popping message channel forever. A new id is the only way to
+         * hand existing installs the alerting behaviour.
+         */
+        const val MESSAGE_CHANNEL_ID = "mesh_messages_v2"
+        private const val LEGACY_MESSAGE_CHANNEL_ID = "mesh_messages"
+
+        /** Set by the reply action; read back out of the RemoteInput bundle. */
+        const val KEY_REPLY_TEXT = "watchtastic_reply"
+        const val EXTRA_CONVERSATION = "com.watchtastic.extra.CONVERSATION"
         const val NODE_CHANNEL_ID = "mesh_nodes"
         const val ONGOING_NOTIFICATION_ID = 1001
         private const val MESSAGE_NOTIFICATION_BASE = 2000
+        private const val SELF_PERSON_KEY = "self"
         private const val NODE_NOTIFICATION_BASE = 3000
     }
 
@@ -65,14 +85,19 @@ class Notifier(private val context: Context) {
             NotificationManager.IMPORTANCE_HIGH,
         ).apply {
             description = context.getString(R.string.chan_msg_desc)
-            // Our own Haptics class owns the buzz vocabulary, so the channel stays
-            // silent here rather than doubling up with the system pattern.
-            enableVibration(false)
+            // The channel has to actually alert for Android to raise a heads-up card.
+            // A silent notification is filed into the stream and never interrupts, no
+            // matter how high its importance — which is why messages previously arrived
+            // without popping up. The buzz therefore belongs to the channel here rather
+            // than to our own Haptics class, or the wearer would feel it twice.
+            enableVibration(true)
+            vibrationPattern = MESSAGE_VIBRATION
             setShowBadge(true)
         }
 
-        // Node discovery is interesting, not urgent — a separate channel so it can be
-        // silenced without also silencing messages.
+        // Node discovery is interesting, not urgent. DEFAULT importance files it into the
+        // notification stream as a small card without seizing the screen, and the channel
+        // stays silent so our own light haptic is the only thing felt.
         val nodesFound = NotificationChannel(
             NODE_CHANNEL_ID,
             context.getString(R.string.chan_node_name),
@@ -86,6 +111,10 @@ class Notifier(private val context: Context) {
         manager.createNotificationChannel(link)
         manager.createNotificationChannel(messages)
         manager.createNotificationChannel(nodesFound)
+
+        // Retire the silent channel so upgraders aren't left with a dead duplicate
+        // sitting in the system notification settings.
+        runCatching { manager.deleteNotificationChannel(LEGACY_MESSAGE_CHANNEL_ID) }
     }
 
     private fun openAppIntent(route: String? = null): PendingIntent {
@@ -140,32 +169,91 @@ class Notifier(private val context: Context) {
     }
 
     /** Posts an incoming mesh message. [senderName] is already resolved for display. */
+    /**
+     * Posts an incoming mesh message as a full heads-up alert.
+     *
+     * Uses [NotificationCompat.MessagingStyle] rather than plain title/text: it is what
+     * Wear renders as a conversation, it stacks successive messages from the same thread
+     * into one card, and it carries the sender through as a [Person] so the watch shows
+     * who is talking. Crucially there is no `setSilent` here — a silent notification is
+     * filed away instead of interrupting, which is what stopped these popping up before.
+     */
     fun postMessage(message: ChatMessage, senderName: String, conversationTitle: String) {
         if (!canPost) return
+
+        val sender = Person.Builder()
+            .setName(senderName)
+            .setKey(message.fromNum.toString())
+            .build()
+
+        val style = NotificationCompat.MessagingStyle(
+            Person.Builder().setName("You").setKey(SELF_PERSON_KEY).build(),
+        ).addMessage(message.text, message.timeMs, sender)
+
+        // A channel is a group conversation; a direct message is not. Wear uses this to
+        // decide whether to prefix each line with the speaker's name.
+        val isGroup = ConversationKey.isChannel(message.conversation)
+        if (isGroup) {
+            style.setGroupConversation(true).conversationTitle = conversationTitle
+        }
+
         val notification = NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_notification)
-            .setContentTitle(senderName)
-            .setContentText(message.text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(message.text))
-            .setSubText(conversationTitle)
+            .setStyle(style)
             .setWhen(message.timeMs)
             .setShowWhen(true)
             .setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
-            // Haptics are played explicitly so every surface uses the same vocabulary.
-            .setSilent(true)
+            // Wear reads this to decide the card can expand over the current screen.
+            .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
             .setContentIntent(openAppIntent(message.conversation))
+            .addAction(replyAction(message.conversation))
             .build()
 
         runCatching {
             // Keyed per conversation so a chatty channel replaces rather than stacks.
-            manager.notify(
-                MESSAGE_NOTIFICATION_BASE + message.conversation.hashCode().and(0xFFFF),
-                notification,
-            )
+            manager.notify(notificationIdFor(message.conversation), notification)
         }
     }
+
+    /**
+     * Reply straight from the notification, without opening the app.
+     *
+     * This is the part that makes a mesh message feel like a text on a watch: the wearer
+     * dictates a reply into the system's own input surface and it goes out over LoRa.
+     */
+    private fun replyAction(conversationKey: String): NotificationCompat.Action {
+        val remoteInput = RemoteInput.Builder(KEY_REPLY_TEXT)
+            .setLabel("Reply")
+            .build()
+
+        val intent = Intent(context, NotificationReplyReceiver::class.java)
+            .setAction(NotificationReplyReceiver.ACTION_REPLY)
+            .putExtra(EXTRA_CONVERSATION, conversationKey)
+
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            conversationKey.hashCode(),
+            intent,
+            // MUTABLE is required: the system fills the wearer's text into this intent.
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+        )
+
+        return NotificationCompat.Action.Builder(
+            R.drawable.ic_notification,
+            "Reply",
+            pendingIntent,
+        )
+            .addRemoteInput(remoteInput)
+            .setSemanticAction(NotificationCompat.Action.SEMANTIC_ACTION_REPLY)
+            .setShowsUserInterface(false)
+            .setAllowGeneratedReplies(true)
+            .build()
+    }
+
+    fun notificationIdFor(conversationKey: String): Int =
+        MESSAGE_NOTIFICATION_BASE + conversationKey.hashCode().and(0xFFFF)
 
     /** A node the mesh has never shown us before just turned up. */
     fun postNewNode(nodeNum: Int, name: String, detail: String) {
