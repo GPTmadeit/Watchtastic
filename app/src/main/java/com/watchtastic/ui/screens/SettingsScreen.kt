@@ -53,6 +53,7 @@ fun SettingsScreen(
     val notifyChannels by graph.prefs.notifyChannels.collectAsStateWithLifecycle()
     val notifyNewNodes by graph.prefs.notifyNewNodes.collectAsStateWithLifecycle()
     val imperial by graph.prefs.imperialUnits.collectAsStateWithLifecycle()
+    val okToMqtt by graph.prefs.okToMqtt.collectAsStateWithLifecycle()
     val nodes by graph.store.nodes.collectAsStateWithLifecycle()
     val myNodeNum by graph.store.myNodeNum.collectAsStateWithLifecycle()
     val radioName by graph.prefs.radioName.collectAsStateWithLifecycle()
@@ -193,6 +194,26 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Imperial units", maxLines = 1) },
                     secondaryLabel = { Text(if (imperial) "miles, feet" else "km, metres") },
+                )
+            }
+            item {
+                // Marks outgoing packets as approved for MQTT relay. Off means a gateway
+                // on the mesh will carry everyone else's traffic but not yours.
+                SwitchButton(
+                    checked = okToMqtt,
+                    onCheckedChange = { graph.haptics.tick(); graph.prefs.setOkToMqtt(it) },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Allow MQTT relay", maxLines = 1) },
+                    secondaryLabel = {
+                        Text(
+                            text = if (okToMqtt) {
+                                "Your messages reach gateways"
+                            } else {
+                                "Gateways will skip your messages"
+                            },
+                            maxLines = 1,
+                        )
+                    },
                 )
             }
 

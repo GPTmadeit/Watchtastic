@@ -35,6 +35,7 @@ fun ChannelsScreen(onOpenChat: (String) -> Unit) {
     val graph = LocalAppGraph.current
     val channels by graph.store.channels.collectAsStateWithLifecycle()
     val muted by graph.prefs.mutedChannels.collectAsStateWithLifecycle()
+    val radioInfo by graph.store.radioInfo.collectAsStateWithLifecycle()
 
     val listState = rememberTransformingLazyColumnState()
 
@@ -78,7 +79,7 @@ fun ChannelsScreen(onOpenChat: (String) -> Unit) {
                                 modifier = Modifier.size(22.dp),
                             )
                         },
-                        label = { Text(channel.displayName, maxLines = 1) },
+                        label = { Text(channel.resolveName(radioInfo.modemPreset), maxLines = 1) },
                         secondaryLabel = {
                             val bits = buildList {
                                 add(channel.role.lowercase())

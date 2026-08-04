@@ -28,6 +28,7 @@ class Prefs(context: Context) {
         const val KEY_IMPERIAL = "imperial_units"
         const val KEY_CANNED = "canned_messages"
         const val KEY_MUTED_CHANNELS = "muted_channels"
+        const val KEY_OK_TO_MQTT = "ok_to_mqtt"
         const val KEY_NOTIFY_NEW_NODES = "notify_new_nodes"
 
         val DEFAULT_CANNED = listOf(
@@ -65,6 +66,17 @@ class Prefs(context: Context) {
 
     private val _imperialUnits = MutableStateFlow(sp.getBoolean(KEY_IMPERIAL, false))
     val imperialUnits: StateFlow<Boolean> = _imperialUnits.asStateFlow()
+
+    /**
+     * Whether outgoing packets carry the "approved for MQTT" flag.
+     *
+     * Defaults on. A mesh with an MQTT gateway expects traffic to be relayable, and every
+     * other client sets it — leaving it off makes messages from this watch invisible to
+     * the gateway while everyone else's appear, which reads as the watch being broken
+     * rather than as a privacy choice.
+     */
+    private val _okToMqtt = MutableStateFlow(sp.getBoolean(KEY_OK_TO_MQTT, true))
+    val okToMqtt: StateFlow<Boolean> = _okToMqtt.asStateFlow()
 
     private val _notifyNewNodes = MutableStateFlow(sp.getBoolean(KEY_NOTIFY_NEW_NODES, true))
     val notifyNewNodes: StateFlow<Boolean> = _notifyNewNodes.asStateFlow()
@@ -126,6 +138,8 @@ class Prefs(context: Context) {
     fun setNotifyChannels(value: Boolean) = putBool(KEY_NOTIFY_CHANNELS, value, _notifyChannels)
 
     fun setImperialUnits(value: Boolean) = putBool(KEY_IMPERIAL, value, _imperialUnits)
+
+    fun setOkToMqtt(value: Boolean) = putBool(KEY_OK_TO_MQTT, value, _okToMqtt)
 
     fun setCannedMessages(messages: List<String>) {
         // Newlines are the record separator, so they can't appear inside an entry.

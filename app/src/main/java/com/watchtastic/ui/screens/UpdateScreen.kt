@@ -71,7 +71,7 @@ fun UpdateScreen() {
             item {
                 Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {
                     DetailRow("Installed", BuildConfig.VERSION_NAME)
-                    DetailRow("Source", "Shared Drive folder")
+                    DetailRow("Source", "GitHub releases")
                 }
             }
 

@@ -16,7 +16,7 @@ val appName = "Watchtastic"
 // Bump both together: versionName drives the APK filename and the Settings footer,
 // versionCode is what Android compares to decide something is an upgrade. Leaving the
 // code at 1 would make a rebuilt APK look like the same build to the installer.
-val appVersionName = "1.3.0"
+val appVersionName = "1.4.0"
 val appVersionCode = 4
 
 /**

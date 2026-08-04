@@ -32,6 +32,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import org.meshtastic.proto.AdminProtos
 import org.meshtastic.proto.ConfigProtos
@@ -75,6 +77,9 @@ class MeshRepository(
 
         /** Coordinates travel as integers scaled by 1e7. */
         const val COORD_SCALE = 1e7
+
+        /** `Data.bitfield` bit 0: the sender approves this packet being relayed to MQTT. */
+        const val BITFIELD_OK_TO_MQTT = 1
     }
 
     val scanner = BleScanner(context)
@@ -101,6 +106,9 @@ class MeshRepository(
     private var lifecycleJob: Job? = null
     private var collectorJob: Job? = null
     private var heartbeatJob: Job? = null
+
+    /** Serialises radio switches so one attempt is fully torn down before the next starts. */
+    private val switchMutex = Mutex()
 
     @Volatile
     private var configNonce = 0
@@ -129,10 +137,23 @@ class MeshRepository(
         connect(address, prefs.radioName.value ?: address)
     }
 
+    /**
+     * Switches to [address], tearing the previous link down first.
+     *
+     * The wait matters. Cancelling a job only *requests* it stop; its `finally` still has
+     * to run. Firing a new attempt immediately let the old attempt's cleanup land after
+     * the new session was already in the field and abort it — so tapping a second radio
+     * appeared to connect and then silently reverted to the first. Serialising through
+     * [switchMutex] and joining makes that ordering impossible.
+     */
     fun connect(address: String, name: String) {
         userStopped = false
-        lifecycleJob?.cancel()
-        lifecycleJob = scope.launch { runLink(address, name) }
+        scope.launch {
+            switchMutex.withLock {
+                lifecycleJob?.cancelAndJoin()
+                lifecycleJob = scope.launch { runLink(address, name) }
+            }
+        }
     }
 
     fun disconnect() {
@@ -140,7 +161,7 @@ class MeshRepository(
         scope.launch {
             lifecycleJob?.cancelAndJoin()
             lifecycleJob = null
-            teardownSession(graceful = true)
+            teardownSession(target = null, graceful = true)
             _link.value = LinkState.Idle
         }
     }
@@ -165,6 +186,10 @@ class MeshRepository(
         var attempt = 0
 
         while (coroutineContext.isActive && !userStopped) {
+            // Scoped to this attempt, so the cleanup below can only ever tear down the
+            // session this iteration opened — never one a newer attempt has since put in
+            // place.
+            var mine: RadioSession? = null
             try {
                 _link.value = if (attempt == 0) {
                     LinkState.Connecting(name)
@@ -184,6 +209,7 @@ class MeshRepository(
                 }
 
                 val s = RadioSession(context, device, scope)
+                mine = s
                 session = s
                 // Start consuming before open(), because open() drains the FIFO and a
                 // collector attached afterwards would miss that first burst.
@@ -213,7 +239,7 @@ class MeshRepository(
                 Log.w(TAG, "link attempt failed: ${e.message}")
                 _link.value = LinkState.Failed(e.message ?: "Connection failed")
             } finally {
-                teardownSession(graceful = false)
+                teardownSession(mine, graceful = false)
             }
 
             if (userStopped || !coroutineContext.isActive) break
@@ -254,14 +280,24 @@ class MeshRepository(
         }
     }
 
-    private fun teardownSession(graceful: Boolean) {
-        heartbeatJob?.cancel()
-        heartbeatJob = null
-        collectorJob?.cancel()
-        collectorJob = null
-        val s = session
-        session = null
-        if (graceful) s?.close() else s?.abort()
+    /**
+     * Tears down [target] only.
+     *
+     * The identity check is the point: a losing attempt must never null out the field
+     * when a newer session already owns it, or switching radios kills the link that just
+     * came up. Passing null means "whatever is current" and is only used by [disconnect].
+     */
+    private fun teardownSession(target: RadioSession?, graceful: Boolean) {
+        val victim = target ?: session
+        if (victim == null) return
+        if (session === victim) {
+            heartbeatJob?.cancel()
+            heartbeatJob = null
+            collectorJob?.cancel()
+            collectorJob = null
+            session = null
+        }
+        if (graceful) victim.close() else victim.abort()
     }
 
     // ------------------------------------------------------------ PacketEvents
@@ -343,6 +379,24 @@ class MeshRepository(
     private fun requireSession(): RadioSession =
         session ?: throw GattException("Radio is not connected")
 
+    /**
+     * Starts a `Data` payload with the MQTT consent flag applied.
+     *
+     * `Data.bitfield` bit 0 is documented as "user approves the packet being uploaded to
+     * MQTT". Leaving the field unset meant an MQTT gateway would relay everyone else's
+     * traffic but silently drop anything sent from the watch — messages appeared on the
+     * mesh but never reached the logger. It is genuinely a consent flag rather than a
+     * transport detail, so it follows a preference; that preference defaults to on
+     * because that is how every other client behaves and a mesh with a gateway expects it.
+     *
+     * Deliberately not applied to admin traffic, which is addressed to our own radio and
+     * has no business leaving the mesh.
+     */
+    private fun airData(portnum: Portnums.PortNum): MeshProtos.Data.Builder =
+        MeshProtos.Data.newBuilder()
+            .setPortnum(portnum)
+            .setBitfield(if (prefs.okToMqtt.value) BITFIELD_OK_TO_MQTT else 0)
+
     /** Non-zero, so the radio never mistakes it for "assign one yourself". */
     private fun nextPacketId(): Int {
         var id = Random.nextInt()
@@ -392,8 +446,7 @@ class MeshRepository(
 
             val (dest, channel) = routeFor(conversation)
             val id = nextPacketId()
-            val builder = MeshProtos.Data.newBuilder()
-                .setPortnum(Portnums.PortNum.TEXT_MESSAGE_APP)
+            val builder = airData(Portnums.PortNum.TEXT_MESSAGE_APP)
                 .setPayload(ByteString.copyFrom(bytes))
             if (replyTo != 0) builder.setReplyId(replyTo)
 
@@ -424,8 +477,7 @@ class MeshRepository(
         runCatching {
             val (dest, channel) = routeFor(conversation)
             val id = nextPacketId()
-            val data = MeshProtos.Data.newBuilder()
-                .setPortnum(Portnums.PortNum.TEXT_MESSAGE_APP)
+            val data = airData(Portnums.PortNum.TEXT_MESSAGE_APP)
                 .setPayload(ByteString.copyFromUtf8(emoji))
                 .setEmoji(1)
                 .setReplyId(targetId)
@@ -465,8 +517,7 @@ class MeshRepository(
 
     suspend fun requestPosition(nodeNum: Int): Result<Unit> = runCatching {
         val channel = store.nodes.value[nodeNum]?.channelIndex ?: 0
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.POSITION_APP)
+        val data = airData(Portnums.PortNum.POSITION_APP)
             .setPayload(MeshProtos.Position.getDefaultInstance().toByteString())
             .setWantResponse(true)
             .build()
@@ -476,8 +527,7 @@ class MeshRepository(
 
     suspend fun traceRoute(nodeNum: Int): Result<Unit> = runCatching {
         val channel = store.nodes.value[nodeNum]?.channelIndex ?: 0
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.TRACEROUTE_APP)
+        val data = airData(Portnums.PortNum.TRACEROUTE_APP)
             .setPayload(MeshProtos.RouteDiscovery.getDefaultInstance().toByteString())
             .setWantResponse(true)
             .build()
@@ -487,8 +537,7 @@ class MeshRepository(
 
     /** Broadcasts an attention-grabbing alert (rings buzzers on receiving nodes). */
     suspend fun sendAlert(channelIndex: Int, text: String): Result<Unit> = runCatching {
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.ALERT_APP)
+        val data = airData(Portnums.PortNum.ALERT_APP)
             .setPayload(ByteString.copyFromUtf8(text.take(100)))
             .build()
         sendPacket(packetTo(MeshConstants.BROADCAST_ADDR, channelIndex, data, wantAck = false))
@@ -509,8 +558,7 @@ class MeshRepository(
             .setTime((System.currentTimeMillis() / 1000L).toInt())
             .setLocationSource(MeshProtos.Position.LocSource.LOC_EXTERNAL)
         position.altitudeMeters?.let { builder.setAltitude(it) }
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.POSITION_APP)
+        val data = airData(Portnums.PortNum.POSITION_APP)
             .setPayload(builder.build().toByteString())
             .build()
         sendPacket(packetTo(self, 0, data, wantAck = false))
@@ -526,8 +574,7 @@ class MeshRepository(
             .setLongitudeI((position.longitude * COORD_SCALE).toInt())
             .setTime((System.currentTimeMillis() / 1000L).toInt())
         position.altitudeMeters?.let { builder.setAltitude(it) }
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.POSITION_APP)
+        val data = airData(Portnums.PortNum.POSITION_APP)
             .setPayload(builder.build().toByteString())
             .build()
         sendPacket(packetTo(MeshConstants.BROADCAST_ADDR, channelIndex, data, wantAck = false))
@@ -548,8 +595,7 @@ class MeshRepository(
             .setName(name.take(30))
             .setDescription(description.take(100))
             .build()
-        val data = MeshProtos.Data.newBuilder()
-            .setPortnum(Portnums.PortNum.WAYPOINT_APP)
+        val data = airData(Portnums.PortNum.WAYPOINT_APP)
             .setPayload(waypoint.toByteString())
             .build()
 

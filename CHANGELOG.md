@@ -1,5 +1,46 @@
 # Changelog
 
+## 1.4.0
+
+Three fixes from field reports, and updates move to GitHub.
+
+**You can switch radios again.** Connecting to a second radio appeared to work and then
+silently reverted to the first, and the only way out was Forget Radio. Two independent
+causes:
+
+- `connect()` cancelled the running link job without waiting for it. Cancellation only
+  *requests* a stop — the old job's `finally` still had to run, and it landed after the
+  new session was already in place and tore it down. Switches are now serialised through
+  a mutex and joined, and teardown checks session identity so a losing attempt can never
+  clear a newer one.
+- The connect screen stopped scanning once connected *and* navigated away the instant it
+  saw a Connected state — so the one screen for choosing a radio showed an empty list and
+  then bounced you out. It now keeps scanning except during the handshake, marks the
+  current radio, and only leaves when you asked it to connect.
+
+**The primary channel shows its real name.** It was hardcoded to "LongFast", so a mesh on
+any other preset was mislabelled — and clearing the thread never helped, because the name
+never came from the messages. The primary channel travels with an empty name and takes it
+from the modem preset, so a MEDIUM_FAST mesh now correctly reads "MediumFast".
+`resolveName(preset)` replaces the old `displayName` property, so the preset can't be
+forgotten at a call site.
+
+**Messages from the watch reach MQTT.** `Data.bitfield` bit 0 is documented as "user
+approves the packet being uploaded to MQTT", and we never set it — so a gateway relayed
+everyone else's traffic but silently dropped anything sent from the watch. It is a consent
+flag, so it follows a new **Settings → Allow MQTT relay** toggle, defaulted on to match
+every other client. Admin traffic deliberately doesn't carry it.
+
+**Updates now come from GitHub Releases** instead of the shared Drive folder. The Drive
+path scraped undocumented HTML that Google could change at any time, and a folder has no
+concept of a release — any APK dropped in it immediately looked like an update to every
+watch. Publishing a GitHub release is a deliberate act, drafts and pre-releases are
+skipped, and no credentials are needed for a public repo.
+
+> **Upgrading from 1.3.0 or earlier:** those builds still look at Drive. They will not see
+> this release on GitHub. Either drop 1.4.0 into the Drive folder once so existing installs
+> can make the jump, or sideload it — from 1.4.0 onward updates come from GitHub.
+
 ## 1.3.0
 
 **Messages now interrupt like a text.** They were arriving silently in the notification

@@ -171,7 +171,7 @@ class MeshService : LifecycleService() {
                     val index = ConversationKey.channelIndex(message.conversation) ?: 0
                     if (index in graph.prefs.mutedChannels.value) return@collect
                     val channel = graph.store.channels.value.firstOrNull { it.index == index }
-                    channel?.displayName ?: "Channel $index"
+                    channel?.resolveName(graph.store.radioInfo.value.modemPreset) ?: "Channel $index"
                 }
 
                 // No explicit haptic here: the message channel now vibrates in order to

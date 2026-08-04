@@ -142,9 +142,29 @@ data class MeshChannel(
 ) {
     val isEnabled: Boolean get() = role != "DISABLED"
 
-    /** Slot 0 with an empty name is the well-known default channel. */
-    val displayName: String
-        get() = name.ifBlank { if (index == 0) "LongFast" else "Channel $index" }
+    /**
+     * What to call this channel, given the radio's current modem preset.
+     *
+     * The primary channel travels with an empty name: by convention its name *is* the
+     * modem preset, which is why a mesh on MEDIUM_FAST calls its default channel
+     * "MediumFast". Hardcoding "LongFast" here — as this used to — mislabelled every mesh
+     * that wasn't on the default preset, and no amount of clearing the thread would fix
+     * it because the name never came from the messages.
+     *
+     * Takes the preset as a parameter rather than reading it, so there is no way to render
+     * a channel name without having decided what preset it belongs to.
+     */
+    fun resolveName(modemPreset: String): String = name.ifBlank {
+        if (index == 0) presetChannelName(modemPreset) else "Channel $index"
+    }
+}
+
+/** `MEDIUM_FAST` becomes `MediumFast`, matching how the rest of the ecosystem writes it. */
+fun presetChannelName(modemPreset: String): String {
+    if (modemPreset.isBlank() || modemPreset == "UNRECOGNIZED") return "Primary"
+    return modemPreset.split('_').joinToString("") { part ->
+        part.lowercase().replaceFirstChar { it.uppercase() }
+    }
 }
 
 enum class MsgStatus {

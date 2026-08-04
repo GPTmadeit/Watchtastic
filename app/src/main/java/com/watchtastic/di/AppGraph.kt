@@ -7,7 +7,7 @@ import com.watchtastic.platform.Haptics
 import com.watchtastic.platform.LocationProvider
 import com.watchtastic.platform.Prefs
 import com.watchtastic.service.Notifier
-import com.watchtastic.update.DriveFolderClient
+import com.watchtastic.update.GitHubReleaseClient
 import com.watchtastic.update.UpdateManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -39,12 +39,13 @@ class AppGraph private constructor(context: Context) {
     val repository = MeshRepository(appContext, store, prefs, scope)
 
     /**
-     * Self-update channel. The folder is public and listable without credentials; an
-     * API key is optional and only makes the listing call more durable.
+     * Self-update channel, reading published GitHub Releases. Public repositories need no
+     * credentials, and publishing a release is a deliberate act — unlike a shared folder,
+     * where dropping in a test APK would have offered it to every watch immediately.
      */
     val updates = UpdateManager(
         appContext,
-        DriveFolderClient(folderId = UPDATE_FOLDER_ID, apiKey = UPDATE_API_KEY),
+        GitHubReleaseClient(owner = UPDATE_OWNER, repo = UPDATE_REPO),
     )
 
     init {
@@ -52,14 +53,16 @@ class AppGraph private constructor(context: Context) {
     }
 
     companion object {
-        /** The shared "Watchtastic" Drive folder that release APKs are dropped into. */
-        const val UPDATE_FOLDER_ID = "1V9CEw9HNeu7KEQpR9mKappWXpnZLYDZ_"
-
         /**
-         * Optional Google Drive API key. Leave blank to use the keyless public-folder
-         * listing; set it to harden the listing call against HTML changes.
+         * Where updates come from: the project's own GitHub Releases.
+         *
+         * Anyone forking this should point these at their own repo — but note the
+         * signature pinning in [UpdateManager] means a fork's releases still cannot
+         * install over a build signed with a different key, which is the intended
+         * behaviour rather than an obstacle.
          */
-        const val UPDATE_API_KEY = ""
+        const val UPDATE_OWNER = "GPTmadeit"
+        const val UPDATE_REPO = "Watchtastic"
 
         @Volatile
         private var instance: AppGraph? = null

@@ -73,6 +73,7 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
     val nodes by graph.store.nodes.collectAsStateWithLifecycle()
     val channels by graph.store.channels.collectAsStateWithLifecycle()
     val myNodeNum by graph.store.myNodeNum.collectAsStateWithLifecycle()
+    val radioInfo by graph.store.radioInfo.collectAsStateWithLifecycle()
     val canned by graph.prefs.cannedMessages.collectAsStateWithLifecycle()
 
     val conversationMessages = remember(allMessages, key) {
@@ -85,10 +86,11 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
         conversationMessages.filter { it.isReaction && it.replyId != 0 }.groupBy { it.replyId }
     }
 
-    val title = remember(key, nodes, channels) {
+    val title = remember(key, nodes, channels, radioInfo.modemPreset) {
         if (ConversationKey.isChannel(key)) {
             val index = ConversationKey.channelIndex(key) ?: 0
-            channels.firstOrNull { it.index == index }?.displayName ?: "Channel $index"
+            channels.firstOrNull { it.index == index }
+                ?.resolveName(radioInfo.modemPreset) ?: "Channel $index"
         } else {
             val num = ConversationKey.nodeNum(key)
             num?.let { nodes[it]?.displayLong } ?: "Direct"

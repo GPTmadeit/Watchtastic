@@ -315,22 +315,32 @@ class MeshStore(
      * Channel conversations always appear (they're addressable even when silent);
      * direct conversations only appear once there is traffic.
      */
+    /**
+     * Channels paired with the name they should actually display.
+     *
+     * Folded in before the main combine because the primary channel's name depends on the
+     * modem preset, and `combine` only has typed overloads up to five flows.
+     */
+    private val namedChannels = combine(_channels, _radioInfo) { channels, info ->
+        channels.map { it to it.resolveName(info.modemPreset) }
+    }
+
     val conversations: kotlinx.coroutines.flow.Flow<List<Conversation>> =
         combine(
             _messages,
             _nodes,
-            _channels,
+            namedChannels,
             _lastRead,
             mutedChannels,
         ) { messages, nodes, channels, lastRead, muted ->
             val byConversation = messages.filterNot { it.isReaction }.groupBy { it.conversation }
 
-            val channelRows = channels.filter { it.isEnabled }.map { channel ->
+            val channelRows = channels.filter { it.first.isEnabled }.map { (channel, title) ->
                 val key = ConversationKey.channel(channel.index)
                 val msgs = byConversation[key].orEmpty()
                 Conversation(
                     key = key,
-                    title = channel.displayName,
+                    title = title,
                     subtitle = msgs.lastOrNull()?.let { preview(it, nodes) } ?: "No messages yet",
                     lastMessage = msgs.lastOrNull(),
                     unreadCount = unreadIn(msgs, lastRead[key]),

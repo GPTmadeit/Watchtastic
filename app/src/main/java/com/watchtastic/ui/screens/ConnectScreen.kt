@@ -94,11 +94,18 @@ fun ConnectScreen(onConnected: () -> Unit) {
 
     var radios by remember { mutableStateOf<List<DiscoveredRadio>>(emptyList()) }
     var scanError by remember { mutableStateOf<String?>(null) }
+    val savedAddress by graph.prefs.radioAddress.collectAsStateWithLifecycle()
 
-    // Stop scanning once we're busy with a radio: a concurrent scan slows the connection
-    // down and drains the battery for no benefit. Keyed on a plain boolean rather than
-    // the state object, so the Syncing progress ticks don't restart the scan 40 times.
-    val shouldScan = hasPermissions && (link is LinkState.Idle || link is LinkState.Failed)
+    // Scan whenever the handshake isn't mid-flight — including while already connected.
+    // Only pause during connect/pair/sync, where a concurrent scan genuinely slows the
+    // link down. Previously this also stopped once connected, which meant the one screen
+    // for choosing a radio showed an empty list to anyone who already had one, and the
+    // only way to reach a second radio was Forget Radio. Keyed on a plain boolean so the
+    // Syncing progress ticks don't restart the scan on every frame.
+    val handshaking = link is LinkState.Connecting ||
+        link is LinkState.Pairing ||
+        link is LinkState.Syncing
+    val shouldScan = hasPermissions && !handshaking
 
     LaunchedEffect(shouldScan) {
         if (!shouldScan) return@LaunchedEffect
@@ -108,8 +115,14 @@ fun ConnectScreen(onConnected: () -> Unit) {
             .collect { radios = it }
     }
 
-    LaunchedEffect(link) {
-        if (link is LinkState.Connected) onConnected()
+    // Leave only when *this screen* asked for a connection. Firing on any Connected state
+    // meant opening Connect while already linked bounced straight back out.
+    var awaitingConnect by remember { mutableStateOf(false) }
+    LaunchedEffect(link, awaitingConnect) {
+        if (awaitingConnect && link is LinkState.Connected) {
+            awaitingConnect = false
+            onConnected()
+        }
     }
 
     val listState = rememberTransformingLazyColumnState()
@@ -178,14 +191,28 @@ fun ConnectScreen(onConnected: () -> Unit) {
                             }
                         }
                     } else {
+                        if (link is LinkState.Connected) {
+                            item {
+                                Text(
+                                    text = "Tap another radio to switch",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                         items(radios.size, key = { radios[it].address }) { index ->
                             val radio = radios[index]
-                            RadioRow(radio) {
+                            RadioRow(
+                                radio = radio,
+                                isCurrent = radio.address == savedAddress && link is LinkState.Connected,
+                            ) {
                                 graph.haptics.select()
                                 // Permissions are guaranteed here — the scan that produced
                                 // this row required them — so this is the first safe
                                 // moment to bring the link service up.
                                 MeshService.start(context)
+                                awaitingConnect = true
                                 graph.repository.connect(radio.address, radio.name)
                             }
                         }
@@ -197,11 +224,15 @@ fun ConnectScreen(onConnected: () -> Unit) {
 }
 
 @Composable
-private fun RadioRow(radio: DiscoveredRadio, onClick: () -> Unit) {
+private fun RadioRow(radio: DiscoveredRadio, isCurrent: Boolean, onClick: () -> Unit) {
     Button(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
-        colors = ButtonDefaults.filledTonalButtonColors(),
+        colors = if (isCurrent) {
+            ButtonDefaults.buttonColors()
+        } else {
+            ButtonDefaults.filledTonalButtonColors()
+        },
         icon = {
             Icon(
                 imageVector = WtIcons.Radio,
@@ -212,7 +243,11 @@ private fun RadioRow(radio: DiscoveredRadio, onClick: () -> Unit) {
         label = { Text(radio.name, maxLines = 1) },
         secondaryLabel = {
             Text(
-                text = if (radio.bonded) "Paired · ${radio.rssi} dBm" else "${radio.rssi} dBm",
+                text = when {
+                    isCurrent -> "Connected · ${radio.rssi} dBm"
+                    radio.bonded -> "Paired · ${radio.rssi} dBm"
+                    else -> "${radio.rssi} dBm"
+                },
                 maxLines = 1,
             )
         },

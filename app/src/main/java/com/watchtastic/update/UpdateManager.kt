@@ -37,7 +37,7 @@ sealed interface UpdateState {
 }
 
 /**
- * Self-update from the shared Drive folder.
+ * Self-update from the project's published GitHub releases.
  *
  * The security model matters more than the plumbing here, because "download an APK and
  * install it" is otherwise a remote code execution feature:
@@ -51,12 +51,12 @@ sealed interface UpdateState {
  *     this app — asks the wearer to confirm. There is no path here that installs
  *     anything without an explicit yes.
  *
- * Downgrades are refused too: an older version in the folder can't be used to roll a
- * device back onto a build with known holes.
+ * Downgrades are refused too: an older published release can't be used to roll a device
+ * back onto a build with known holes.
  */
 class UpdateManager(
     private val context: Context,
-    private val client: DriveFolderClient,
+    private val client: GitHubReleaseClient,
 ) {
     companion object {
         private const val TAG = "UpdateManager"
@@ -239,7 +239,7 @@ class UpdateManager(
     private fun friendlyError(error: Throwable): String = when (error) {
         is SecurityException -> error.message ?: "Update rejected"
         is java.net.UnknownHostException -> "No network"
-        is java.net.SocketTimeoutException -> "Drive timed out"
+        is java.net.SocketTimeoutException -> "GitHub timed out"
         else -> error.message ?: "Update failed"
     }
 }
