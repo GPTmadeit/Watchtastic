@@ -8,10 +8,14 @@ import android.content.pm.PackageManager
 import android.content.pm.Signature
 import android.util.Log
 import com.watchtastic.BuildConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.security.MessageDigest
@@ -57,6 +61,14 @@ sealed interface UpdateState {
 class UpdateManager(
     private val context: Context,
     private val client: GitHubReleaseClient,
+    /**
+     * Application-scoped, deliberately. Update work must not be tied to the screen that
+     * started it: the button that triggers a check lives in a `when(state)` branch, so
+     * the moment state flips to Checking that branch — and any composable scope it
+     * owned — leaves the composition. Work launched there would cancel itself a
+     * millisecond after starting.
+     */
+    private val scope: CoroutineScope,
 ) {
     companion object {
         private const val TAG = "UpdateManager"
@@ -84,11 +96,33 @@ class UpdateManager(
     val canInstall: Boolean
         get() = context.packageManager.canRequestPackageInstalls()
 
+    @Volatile
+    private var activeJob: Job? = null
+
+    /**
+     * Runs one update operation at a time on the application scope.
+     *
+     * The UI calls these rather than launching the suspend functions itself, so no screen
+     * can accidentally own the lifetime of a download again. The single-flight guard also
+     * makes a double-tap harmless.
+     */
+    private fun launchExclusive(block: suspend () -> Unit) {
+        if (activeJob?.isActive == true) return
+        activeJob = scope.launch { block() }
+    }
+
+    fun checkNow() = launchExclusive { check() }
+
+    fun downloadNow(build: RemoteBuild) = launchExclusive { download(build) }
+
+    fun installNow() = launchExclusive { install() }
+
     /** Looks for a newer build. Safe to call repeatedly. */
     suspend fun check(): UpdateState {
         _state.value = UpdateState.Checking
         val result = runCatching { client.listApks() }
         val builds = result.getOrElse { error ->
+            error.rethrowIfCancellation()
             Log.w(TAG, "update check failed", error)
             return UpdateState.Failed(friendlyError(error)).also { _state.value = it }
         }
@@ -124,6 +158,7 @@ class UpdateManager(
         return result.fold(
             onSuccess = { UpdateState.ReadyToInstall(build).also { _state.value = it } },
             onFailure = { error ->
+                error.rethrowIfCancellation()
                 Log.w(TAG, "download/verify failed", error)
                 runCatching { stagedApk.delete() }
                 UpdateState.Failed(friendlyError(error)).also { _state.value = it }
@@ -169,6 +204,7 @@ class UpdateManager(
             }
             Unit
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             Log.w(TAG, "install failed", error)
             _state.value = UpdateState.Failed(friendlyError(error))
         }
@@ -241,5 +277,17 @@ class UpdateManager(
         is java.net.UnknownHostException -> "No network"
         is java.net.SocketTimeoutException -> "GitHub timed out"
         else -> error.message ?: "Update failed"
+    }
+
+    /**
+     * Cancellation is not a failure and must never reach the screen.
+     *
+     * `runCatching` catches [CancellationException] like anything else, which is how the
+     * literal text "The coroutine scope left the composition" ended up rendered in red as
+     * though it were an update error. Rethrowing also keeps structured concurrency
+     * honest: a cancelled parent stays cancelled.
+     */
+    private fun Throwable.rethrowIfCancellation() {
+        if (this is CancellationException) throw this
     }
 }

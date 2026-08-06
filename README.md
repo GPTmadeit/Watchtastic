@@ -23,6 +23,24 @@ with no cell service, no wifi, no infrastructure. Normally you drive one from a 
 Watchtastic puts the whole thing on your watch. The radio can stay in your pack while you
 read messages, check who's on the mesh, and navigate to them from your wrist.
 
+## See it
+
+<div align="center">
+
+<img src="docs/screenshots/home.png" width="200" alt="Home screen showing mesh status and navigation"/>
+<img src="docs/screenshots/conversations.png" width="200" alt="Conversation list"/>
+<img src="docs/screenshots/chat.png" width="200" alt="A channel conversation with delivery ticks"/>
+
+<img src="docs/screenshots/map.png" width="200" alt="Offline map with radar sweep"/>
+<img src="docs/screenshots/nodes.png" width="200" alt="Node list with signal strength"/>
+<img src="docs/screenshots/node_detail.png" width="200" alt="Node detail with telemetry"/>
+
+<sub>Home · Messages · Chat — Map · Nodes · Node detail</sub>
+
+</div>
+
+---
+
 ## What you can do with it
 
 | | |
@@ -68,7 +86,7 @@ If you'd rather use a computer:
 
 ```bash
 adb connect <watch-ip>:<port>
-adb install -r Watchtastic-1.3.0-release.apk
+adb install -r Watchtastic-1.4.1-release.apk
 ```
 
 ---
@@ -139,7 +157,7 @@ your watch model and radio.
 ```
 
 JDK 17 and Android SDK 36. Output is named for what it is —
-`Watchtastic-1.3.0-release.apk`.
+`Watchtastic-1.4.1-release.apk`.
 
 Release builds sign only if a `keystore.properties` exists at the repo root (gitignored,
 along with `*.jks`). Without one the release variant still builds but comes out unsigned,

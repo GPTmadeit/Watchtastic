@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -49,13 +48,12 @@ import kotlinx.coroutines.launch
 @Composable
 fun UpdateScreen() {
     val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val state by graph.updates.state.collectAsStateWithLifecycle()
 
     // Check once on open: arriving at this screen *is* the request to check.
     LaunchedEffect(Unit) {
-        if (state is UpdateState.Idle) graph.updates.check()
+        if (state is UpdateState.Idle) graph.updates.checkNow()
     }
 
     val listState = rememberTransformingLazyColumnState()
@@ -121,7 +119,7 @@ fun UpdateScreen() {
                         Button(
                             onClick = {
                                 graph.haptics.select()
-                                scope.launch { graph.updates.download(current.build) }
+                                graph.updates.downloadNow(current.build)
                             },
                             modifier = Modifier.fillMaxWidth(),
                             label = { Text("Download", maxLines = 1) },
@@ -188,7 +186,7 @@ fun UpdateScreen() {
                         Button(
                             onClick = {
                                 graph.haptics.heavy()
-                                scope.launch { graph.updates.install() }
+                                graph.updates.installNow()
                             },
                             modifier = Modifier.fillMaxWidth(),
                             colors = if (graph.updates.canInstall) {
@@ -227,11 +225,10 @@ fun UpdateScreen() {
 @Composable
 private fun CheckAgainButton() {
     val graph = LocalAppGraph.current
-    val scope = rememberCoroutineScope()
     Button(
         onClick = {
             graph.haptics.select()
-            scope.launch { graph.updates.check() }
+            graph.updates.checkNow()
         },
         modifier = Modifier.fillMaxWidth(),
         colors = ButtonDefaults.filledTonalButtonColors(),

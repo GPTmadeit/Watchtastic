@@ -1,5 +1,29 @@
 # Changelog
 
+## 1.4.1
+
+**Fixed: checking for updates showed a red error.** Tapping **Check again** reported
+*"rememberCoroutineScope left the composition"* instead of checking.
+
+The button was cancelling its own work. It only exists inside the `Failed` and `Idle`
+branches of the update screen, and it owned a composable-scoped coroutine. Tapping it
+flipped the state to `Checking`, that branch left the composition, its scope was
+cancelled — and the check it had started a millisecond earlier died with it. The
+resulting `CancellationException` was then caught by `runCatching` and rendered as
+though it were an update failure, which is how a Compose internal message ended up on
+screen in red.
+
+Both halves are fixed. Update work now runs on the application scope inside
+`UpdateManager` (`checkNow()` / `downloadNow()` / `installNow()`), so no screen owns the
+lifetime of an operation that outlives it, and a single-flight guard makes double-taps
+harmless. Separately, cancellation is now rethrown rather than reported: it is not a
+failure and must never reach the UI.
+
+Download and install had the identical flaw — their buttons also vanish the instant
+state changes — so both were fixed at the same time, before anyone hit them.
+
+Also: the README now carries screenshots.
+
 ## 1.4.0
 
 Three fixes from field reports, and updates move to GitHub.

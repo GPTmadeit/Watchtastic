@@ -46,6 +46,7 @@ class AppGraph private constructor(context: Context) {
     val updates = UpdateManager(
         appContext,
         GitHubReleaseClient(owner = UPDATE_OWNER, repo = UPDATE_REPO),
+        scope,
     )
 
     init {
