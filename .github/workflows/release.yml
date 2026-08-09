@@ -39,17 +39,30 @@ jobs:
       - name: Unit tests
         run: ./gradlew testDebugUnitTest --stacktrace
 
-      # Signing material never lives in the repo. Without these secrets the job stops
-      # here rather than publishing an unsigned APK that Android would refuse to install
-      # with INSTALL_PARSE_FAILED_NO_CERTIFICATES.
-      - name: Restore signing keystore
+      # Signing material never lives in the repo. Publishing an unsigned APK would be
+      # worse than publishing nothing — Android rejects it with
+      # INSTALL_PARSE_FAILED_NO_CERTIFICATES — so without secrets this skips the
+      # publishing half rather than failing the run. Releases can still be cut by hand
+      # with `gh release create`; see docs/RELEASING.md.
+      - name: Check for signing secrets
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
           if [ -z "$KEYSTORE_BASE64" ]; then
-            echo "::error::KEYSTORE_BASE64 is not set. See docs/RELEASING.md."
-            exit 1
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Signing secrets are not configured, so no APK was published. \
+            Add KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD to enable \
+            automated releases — see docs/RELEASING.md."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
           fi
+
+      - name: Restore signing keystore
+        if: steps.signing.outputs.configured == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: |
           echo "$KEYSTORE_BASE64" | base64 -d > release.jks
           cat > keystore.properties <<EOF
           storeFile=release.jks
@@ -59,15 +72,21 @@ jobs:
           EOF
 
       - name: Assemble signed release APK
+        if: steps.signing.outputs.configured == 'true'
         run: ./gradlew assembleRelease --stacktrace
 
+      # A signed-looking APK that isn't actually signed is the failure mode worth
+      # catching here, so verification is a hard gate before anything is published.
       - name: Verify the APK is actually signed
+        if: steps.signing.outputs.configured == 'true'
         run: |
           APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)
           echo "Verifying $APK"
-          "$ANDROID_HOME"/build-tools/34.0.0/apksigner verify --verbose "$APK"
+          "$APKSIGNER" verify --verbose "$APK"
 
       - name: Generate checksum
+        if: steps.signing.outputs.configured == 'true'
         run: |
           APK=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
           sha256sum "$APK" | awk -v n="$(basename "$APK")" '{print $1"  "n}' > "$APK.sha256"
@@ -78,6 +97,7 @@ jobs:
         run: rm -f release.jks keystore.properties
 
       - name: Publish release
+        if: steps.signing.outputs.configured == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.tag || github.ref_name }}
