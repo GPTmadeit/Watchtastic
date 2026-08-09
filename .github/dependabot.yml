@@ -1,0 +1,39 @@
+version: 2
+
+updates:
+  # Gradle dependencies live in gradle/libs.versions.toml (a version catalog), which
+  # Dependabot reads natively.
+  - package-ecosystem: gradle
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    labels: [dependencies]
+    commit-message:
+      prefix: deps
+    groups:
+      # AndroidX ships in coordinated waves; one PR per artifact would be noise.
+      androidx:
+        patterns: ['androidx.*']
+      kotlin:
+        patterns: ['org.jetbrains.kotlin*', 'org.jetbrains.kotlinx*']
+    ignore:
+      # Pinned deliberately: androidx.core 1.19+ and lifecycle 2.11+ require AGP 9.1,
+      # and AGP 9 removes the BaseVariant API that protobuf-gradle-plugin still uses.
+      # Moving up means replacing the protobuf codegen path first — see ARCHITECTURE.md.
+      - dependency-name: androidx.core:core-ktx
+        versions: ['>=1.19.0']
+      - dependency-name: androidx.lifecycle:*
+        versions: ['>=2.11.0']
+      - dependency-name: com.android.tools.build:gradle
+        versions: ['>=9.0.0']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies]
+    commit-message:
+      prefix: ci

@@ -1,5 +1,43 @@
 # Changelog
 
+All notable changes to this project are documented here. This project follows
+[semantic versioning](https://semver.org).
+
+## 1.4.2
+
+### Fixed
+
+- **Version strings with a `v` prefix were rejected.** `Version.parse("v1.4.1")` returned
+  null, because it required a purely numeric string. Every git tag here is `vN.N.N`, and
+  `GitHubReleaseClient` falls back to the tag when a release asset's filename carries no
+  version — so an asset named without one would have silently skipped the entire release
+  rather than failing visibly. Found by a unit test written for this release, not in the
+  field.
+
+### Added
+
+- **26 unit tests** covering the pure logic behind previously-reported bugs: channel
+  naming from modem preset, version parsing and ordering, great-circle distance and
+  bearing, node-id round-tripping across the uint32 boundary, and conversation keys.
+- **CI on every push and pull request** — unit tests, Android Lint, and a debug build.
+- **CodeQL** scanning, weekly and on every change.
+- **Release automation**: pushing a `v*.*.*` tag builds the signed APK, verifies the
+  signature, generates a checksum and publishes the release.
+- **Dependabot** for Gradle and Actions, configured to skip the AndroidX and AGP bumps
+  that are pinned for the reason documented in `docs/ARCHITECTURE.md`.
+- Issue and pull-request templates that ask for the details which actually make a
+  Watchtastic bug reproducible — watch model, radio model, firmware, modem preset.
+- `CONTRIBUTING.md`, `SECURITY.md`, `SUPPORT.md`, `CODE_OF_CONDUCT.md`,
+  `docs/ARCHITECTURE.md`, `docs/RELEASING.md`, `docs/ROADMAP.md`, and a project banner.
+
+### Changed
+
+- README rewritten for someone who wants the app on their watch: what problem it solves,
+  requirements, quick start, usage, configuration, troubleshooting, FAQ, and development —
+  with the deep technical material moved into `docs/`.
+- `.gitignore` broadened to cover keystores, `.env` files, service-account JSON and build
+  artefacts. No tracked file was affected.
+
 ## 1.4.1
 
 **Fixed: checking for updates showed a red error.** Tapping **Check again** reported

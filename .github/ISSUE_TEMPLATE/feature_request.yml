@@ -1,0 +1,32 @@
+name: Feature request
+description: Suggest something Watchtastic should do
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Worth knowing before you write: the screen is about 1.2 inches, the app must work
+        with no network at all, and anything requiring a keyboard or a camera is usually
+        better on the phone client. Ideas that fit those constraints tend to land.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the situation you're in, not just the feature you want.
+      placeholder: "When I'm out of range of the group I can't tell whether …"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What would it look like on the watch?
+      description: How you'd reach it, and what you'd see or feel.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried instead?

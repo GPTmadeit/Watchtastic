@@ -1,16 +1,78 @@
-*.iml
-.gradle/
-/local.properties
-/.idea/
-.DS_Store
-/build
-/app/build
-/captures
-.externalNativeBuild
-.cxx
-local.properties
-
-# Release signing material — never commit these.
+# ---------------------------------------------------------------------------
+# Secrets and signing material — never commit these.
+# The release keystore is what the in-app updater pins signatures against, so
+# leaking it would let someone else's build install itself onto users' watches.
+# ---------------------------------------------------------------------------
 /keystore.properties
+keystore.properties
 *.jks
 *.keystore
+*.p12
+*.pem
+*.der
+/local.properties
+local.properties
+.env
+.env.*
+!.env.example
+secrets.properties
+google-services.json
+*.aab.json
+service-account*.json
+
+# ---------------------------------------------------------------------------
+# Build output
+# ---------------------------------------------------------------------------
+build/
+/build
+/app/build
+*.apk
+*.aab
+*.aar
+*.ap_
+*.dex
+*.class
+/captures
+release/
+out/
+
+# ---------------------------------------------------------------------------
+# Gradle
+# ---------------------------------------------------------------------------
+.gradle/
+gradle-app.setting
+.gradletasknamecache
+
+# ---------------------------------------------------------------------------
+# IDE
+# ---------------------------------------------------------------------------
+.idea/
+*.iml
+*.ipr
+*.iws
+.kotlin/
+.vscode/
+*.swp
+*~
+
+# ---------------------------------------------------------------------------
+# Native / NDK
+# ---------------------------------------------------------------------------
+.externalNativeBuild/
+.cxx/
+obj/
+
+# ---------------------------------------------------------------------------
+# OS noise
+# ---------------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------------------------------------------------------------------------
+# Logs and scratch
+# ---------------------------------------------------------------------------
+*.log
+*.hprof
+/tmp/
+/scratch/

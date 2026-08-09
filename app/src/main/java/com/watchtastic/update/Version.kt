@@ -23,8 +23,15 @@ data class Version(val parts: List<Int>, val raw: String) : Comparable<Version> 
     companion object {
         private val VERSION_IN_NAME = Regex("""(\d+(?:\.\d+)+)""")
 
+        /**
+         * Accepts `1.4.1` and the `v1.4.1` form git tags use.
+         *
+         * The `v` prefix matters: [GitHubReleaseClient] falls back to the release tag
+         * when an asset filename carries no version, and every tag here is `vN.N.N`.
+         * Rejecting it would silently skip the whole release rather than fail loudly.
+         */
         fun parse(text: String): Version? {
-            val cleaned = text.trim()
+            val cleaned = text.trim().removePrefix("v").removePrefix("V")
             if (!cleaned.matches(Regex("""\d+(\.\d+)*"""))) return null
             val parts = cleaned.split('.').mapNotNull { it.toIntOrNull() }
             return if (parts.isEmpty()) null else Version(parts, cleaned)

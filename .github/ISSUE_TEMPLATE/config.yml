@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Question or setup help
+    url: https://github.com/GPTmadeit/Watchtastic/discussions
+    about: Ask here rather than opening an issue — installation, pairing, and "is this supposed to happen" questions.
+  - name: Problem installing on the watch
+    url: https://github.com/GPTmadeit/WatchPush
+    about: Sideloading trouble usually belongs with WatchPush, the companion installer.
+  - name: Meshtastic firmware or radio problem
+    url: https://meshtastic.org/docs/community
+    about: If your radio misbehaves with the official app too, the Meshtastic community can help faster.
+  - name: Report a security vulnerability
+    url: https://github.com/GPTmadeit/Watchtastic/security/advisories/new
+    about: Please report privately rather than in a public issue.

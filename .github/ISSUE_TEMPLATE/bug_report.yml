@@ -1,0 +1,73 @@
+name: Bug report
+description: Something in the app behaves incorrectly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Nearly every bug in this app depends on **which watch** and
+        **which radio** — the fields below are what make a report reproducible.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, and what you got instead.
+      placeholder: |
+        1. Opened Messages
+        2. Tapped the channel
+        3. Expected … but saw …
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: Watchtastic version
+      description: Settings → scroll to the bottom. Or Settings → Software update.
+      placeholder: "1.4.1"
+    validations:
+      required: true
+
+  - type: input
+    id: watch
+    attributes:
+      label: Watch model and Wear OS version
+      placeholder: "Pixel Watch 4, Wear OS 6"
+    validations:
+      required: true
+
+  - type: input
+    id: radio
+    attributes:
+      label: Meshtastic radio and firmware
+      description: Radio hardware and firmware version, from the Radio status screen.
+      placeholder: "Heltec V3, firmware 2.5.13"
+    validations:
+      required: true
+
+  - type: input
+    id: preset
+    attributes:
+      label: Modem preset and region
+      description: Relevant more often than you'd think — channel naming and range both depend on it.
+      placeholder: "MediumFast, US"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: |
+        With the watch on wireless debugging:
+        `adb logcat -s Watchtastic:* MeshRepository:* GattLink:* RadioSession:*`
+      render: shell
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before submitting
+      options:
+        - label: I'm on the latest release, or I've said which version I'm on above
+          required: true
+        - label: I searched existing issues
+          required: true

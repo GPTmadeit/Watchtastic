@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 320" width="1280" height="320" role="img" aria-label="Watchtastic">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#1B1D28"/>
+      <stop offset="55%" stop-color="#14161F"/>
+      <stop offset="100%" stop-color="#0C0D13"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#67EA94" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#67EA94" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="fade" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#67EA94" stop-opacity="0.30"/>
+      <stop offset="100%" stop-color="#67EA94" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="320" fill="url(#bg)"/>
+
+  <!-- Range rings echoing the in-app map, fading out to the right. -->
+  <g fill="none" stroke="url(#fade)" stroke-width="1.5">
+    <circle cx="216" cy="160" r="104"/>
+    <circle cx="216" cy="160" r="140"/>
+    <circle cx="216" cy="160" r="176"/>
+  </g>
+
+  <circle cx="216" cy="160" r="150" fill="url(#glow)"/>
+
+  <!-- The app mark: watch case, crown at three o'clock, chirp peaks on the dial. -->
+  <g transform="translate(216 160) scale(1.62) translate(-54 -54)">
+    <circle cx="54" cy="54" r="26.5" fill="#67EA94" fill-opacity="0.11"/>
+    <line x1="81" y1="54" x2="83.5" y2="54" stroke="#67EA94" stroke-width="5.6" stroke-linecap="round"/>
+    <circle cx="54" cy="54" r="26" fill="none" stroke="#67EA94" stroke-width="3"/>
+    <polyline points="38.6,64.6 46.6,42.6 54,54.8 61.4,42.6 69.4,64.6"
+              fill="none" stroke="#67EA94" stroke-width="5"
+              stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="46.6" cy="42.6" r="4" fill="#C9FBDC"/>
+    <circle cx="61.4" cy="42.6" r="4" fill="#C9FBDC"/>
+    <circle cx="54" cy="54.8" r="3.5" fill="#67EA94"/>
+  </g>
+
+  <g font-family="'Segoe UI', 'Helvetica Neue', Helvetica, Arial, sans-serif">
+    <text x="432" y="150" fill="#F2F4F8" font-size="76" font-weight="700"
+          letter-spacing="-1.5">Watchtastic</text>
+    <text x="436" y="196" fill="#A7AEC1" font-size="26" font-weight="400">
+      Off-grid mesh messaging, on your wrist
+    </text>
+
+    <!-- Three facts, not decoration. -->
+    <g font-size="19" fill="#67EA94" font-weight="600">
+      <text x="436" y="248">Wear OS 4+</text>
+      <text x="592" y="248">·</text>
+      <text x="616" y="248">No phone required</text>
+      <text x="826" y="248">·</text>
+      <text x="850" y="248">Works with no signal</text>
+    </g>
+  </g>
+</svg>
