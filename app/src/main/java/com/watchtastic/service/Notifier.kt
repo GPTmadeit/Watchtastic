@@ -122,6 +122,11 @@ class Notifier(private val context: Context) {
         // the app misrepresent itself in the Wear recents carousel.
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // Redundant beside an explicit component, but it makes the intent
+            // unambiguously non-implicit — to a reader and to static analysis alike.
+            // A PendingIntent wrapping an implicit intent can be intercepted by another
+            // app; this one names both package and class, and is immutable below.
+            setPackage(context.packageName)
             route?.let { putExtra(MainActivity.EXTRA_ROUTE, it) }
         }
         return PendingIntent.getActivity(
@@ -228,8 +233,13 @@ class Notifier(private val context: Context) {
             .setLabel("Reply")
             .build()
 
+        // This one must be MUTABLE so the system can insert the dictated text, which
+        // makes its target worth being precise about: an explicit component, scoped to
+        // our own package, delivering to a receiver declared android:exported="false"
+        // that validates the action and extras before acting.
         val intent = Intent(context, NotificationReplyReceiver::class.java)
             .setAction(NotificationReplyReceiver.ACTION_REPLY)
+            .setPackage(context.packageName)
             .putExtra(EXTRA_CONVERSATION, conversationKey)
 
         val pendingIntent = PendingIntent.getBroadcast(
