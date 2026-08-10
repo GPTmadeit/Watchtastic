@@ -18,7 +18,7 @@ wearToolingPreview = "1.0.0"
 # Pinned to the Android 16 / compileSdk 36 generation. The 1.19.x core and
 # 2.11.x lifecycle lines require AGP 9.1 + compileSdk 37, which would in turn
 # break protobuf-gradle-plugin (it still uses the removed BaseVariant API).
-activityCompose = "1.12.4"
+activityCompose = "1.13.0"
 lifecycle = "2.10.0"
 coreKtx = "1.17.0"
 splashscreen = "1.2.0"
