@@ -155,7 +155,7 @@ fun NodeDetailScreen(
                 }
             }
 
-            if (node.metrics.batteryLevel != null || node.metrics.temperature != null) {
+            if (node.metrics.hasTelemetry) {
                 item { ListSubHeader { Text("Telemetry") } }
                 item {
                     Card(onClick = {}, modifier = Modifier.fillMaxWidth()) {
@@ -173,6 +173,18 @@ fun NodeDetailScreen(
                         }
                         node.metrics.uptimeSeconds?.let {
                             DetailRow("Uptime", formatUptime(it))
+                        }
+                        // Lightning leads on colour because it is the one reading here
+                        // that should change what you do next.
+                        node.metrics.lightningDistanceKm?.let {
+                            DetailRow(
+                                label = "Lightning",
+                                value = formatDistance(it * 1000.0, imperial),
+                                valueColor = MeshPalette.Amber,
+                            )
+                        }
+                        node.metrics.lightningStrikes1h?.let {
+                            DetailRow("Strikes (1h)", it.toString())
                         }
                     }
                 }

@@ -218,7 +218,7 @@ class PacketRouter(
     /** Any traffic from a node updates its liveness, SNR and hop count. */
     private fun touchNode(packet: MeshProtos.MeshPacket) {
         if (packet.from == 0) return
-        val heard = if (packet.rxTime != 0) packet.rxTime else nowSeconds()
+        val heard = if (packet.hasRxTime()) packet.rxTime else nowSeconds()
         val hops = if (packet.hopStart > 0 && packet.hopLimit <= packet.hopStart) {
             packet.hopStart - packet.hopLimit
         } else {
@@ -228,7 +228,7 @@ class PacketRouter(
             it.copy(
                 lastHeardSeconds = maxOf(it.lastHeardSeconds, heard),
                 snr = if (packet.rxSnr != 0f) packet.rxSnr else it.snr,
-                rssi = if (packet.rxRssi != 0) packet.rxRssi else it.rssi,
+                rssi = if (packet.hasRxRssi()) packet.rxRssi else it.rssi,
                 hopsAway = hops ?: it.hopsAway,
                 viaMqtt = packet.viaMqtt || it.viaMqtt,
             )
@@ -254,7 +254,11 @@ class PacketRouter(
                 toNum = packet.to,
                 channel = packet.channel,
                 text = text,
-                timeMs = if (packet.rxTime != 0) packet.rxTime * 1000L else System.currentTimeMillis(),
+                timeMs = if (packet.hasRxTime()) {
+                    packet.rxTime * 1000L
+                } else {
+                    System.currentTimeMillis()
+                },
                 outgoing = false,
                 status = MsgStatus.Received,
                 replyId = data.replyId,
@@ -274,7 +278,7 @@ class PacketRouter(
                 store.applyPosition(
                     packet.from,
                     it,
-                    if (packet.rxTime != 0) packet.rxTime else nowSeconds(),
+                    if (packet.hasRxTime()) packet.rxTime else nowSeconds(),
                 )
             }
         }.onFailure { Log.w(TAG, "bad position payload", it) }
@@ -300,7 +304,7 @@ class PacketRouter(
     private fun handleTelemetry(packet: MeshProtos.MeshPacket, data: MeshProtos.Data) {
         runCatching {
             val telemetry = TelemetryProtos.Telemetry.parseFrom(data.payload)
-            val heard = if (packet.rxTime != 0) packet.rxTime else nowSeconds()
+            val heard = if (packet.hasRxTime()) packet.rxTime else nowSeconds()
             when (telemetry.variantCase) {
                 TelemetryProtos.Telemetry.VariantCase.DEVICE_METRICS ->
                     store.applyMetrics(packet.from, telemetry.deviceMetrics.toModel(), heard)
@@ -318,6 +322,16 @@ class PacketRouter(
                             },
                             barometricPressure = if (env.hasBarometricPressure()) {
                                 env.barometricPressure
+                            } else {
+                                null
+                            },
+                            lightningStrikes1h = if (env.hasLightningStrikeCount1H()) {
+                                env.lightningStrikeCount1H
+                            } else {
+                                null
+                            },
+                            lightningDistanceKm = if (env.hasLightningDistanceKm()) {
+                                env.lightningDistanceKm
                             } else {
                                 null
                             },

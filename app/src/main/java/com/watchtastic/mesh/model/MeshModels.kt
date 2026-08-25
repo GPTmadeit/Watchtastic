@@ -89,9 +89,33 @@ data class NodeMetrics(
     val temperature: Float? = null,
     val relativeHumidity: Float? = null,
     val barometricPressure: Float? = null,
+    /**
+     * Lightning, from an AS3935 sensor on the reporting node.
+     *
+     * Worth surfacing on a watch above most other environment readings: a storm closing
+     * in is the one weather fact that changes what you do next, and it is exactly the
+     * situation where nobody is looking at a phone.
+     */
+    val lightningStrikes1h: Int? = null,
+    val lightningDistanceKm: Float? = null,
 ) {
     /** Radios report 101% to mean "running on external power". */
     val isPluggedIn: Boolean get() = (batteryLevel ?: 0) > 100
+
+    /** True when the reporting node has heard lightning within the last hour. */
+    val hasLightning: Boolean get() = (lightningStrikes1h ?: 0) > 0
+
+    /**
+     * Whether there is anything at all worth drawing a telemetry card for.
+     *
+     * Checking a couple of fields by hand meant a weather station reporting only
+     * lightning — no battery, no temperature — had its whole card hidden.
+     */
+    val hasTelemetry: Boolean
+        get() = batteryLevel != null || voltage != null || temperature != null ||
+            relativeHumidity != null || barometricPressure != null ||
+            uptimeSeconds != null || channelUtilization != null || airUtilTx != null ||
+            lightningStrikes1h != null || lightningDistanceKm != null
 }
 
 @Serializable

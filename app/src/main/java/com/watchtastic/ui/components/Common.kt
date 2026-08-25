@@ -213,7 +213,13 @@ fun StatusDot(color: Color, modifier: Modifier = Modifier, size: Int = 8) {
 
 /** Compact key/value row for detail screens. */
 @Composable
-fun DetailRow(label: String, value: String, modifier: Modifier = Modifier) {
+fun DetailRow(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    /** Highlights a value that should draw the eye, such as a nearby lightning strike. */
+    valueColor: Color? = null,
+) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -231,7 +237,7 @@ fun DetailRow(label: String, value: String, modifier: Modifier = Modifier) {
         Text(
             text = value,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = valueColor ?: MaterialTheme.colorScheme.onSurface,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             textAlign = TextAlign.End,

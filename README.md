@@ -107,7 +107,7 @@ APKs onto your watch straight from your phone.
 # Enable Wireless debugging on the watch first, then:
 adb pair <watch-ip>:<pairing-port>      # only needed once
 adb connect <watch-ip>:<port>
-adb install -r Watchtastic-1.4.2-release.apk
+adb install -r Watchtastic-1.5.0-release.apk
 ```
 
 </details>

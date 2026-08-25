@@ -3,6 +3,43 @@
 All notable changes to this project are documented here. This project follows
 [semantic versioning](https://semver.org).
 
+## 1.5.0
+
+Catches the app up with upstream Meshtastic. The vendored protobuf definitions were a
+month behind `meshtastic/protobufs`; they are now level with upstream `1b4cb00`
+(2026-08-21).
+
+### Added
+
+- **Lightning telemetry.** Upstream added `lightning_strike_count_1h` and
+  `lightning_distance_km` to `EnvironmentMetrics`, reported by nodes with an AS3935
+  sensor. Node detail now shows how far away the nearest strike was and how many hit in
+  the last hour, with the distance picked out in amber — of everything a weather station
+  reports, an approaching storm is the one reading that should change what you do next,
+  and it lands in exactly the situation where nobody is looking at a phone.
+- **New hardware and firmware editions** are recognised: `SEEED_WIO_TRACKER_L1_PRO_1W`,
+  `MESHNOLOGY_W12`, `MESHPAGER_X2`, and the `DRAGON_CON` and `CCC` firmware editions.
+  These appear wherever a node's hardware is displayed.
+- **New sensor types** in the schema — SEN6X and AS3935 — plus their configuration
+  messages. Sensor *configuration* stays out of scope for a watch; the readings do not.
+- 7 more unit tests, covering telemetry presence and the lightning flags. 33 in total.
+
+### Fixed
+
+- **A node reporting only lightning showed an empty telemetry card.** The card was gated
+  on battery or temperature being present, so a weather station with neither — which is
+  exactly what an AS3935 station looks like — had the whole section hidden. Replaced with
+  `NodeMetrics.hasTelemetry`, which asks whether *any* reading exists.
+- **`rx_time` and `rx_rssi` presence is now read properly.** Upstream made both `optional`,
+  so absence is finally expressible. The old `!= 0` test conflated "the radio didn't say"
+  with "the value is zero" — and an RSSI of exactly 0 is a real reading, not a missing one.
+
+### Changed
+
+- `one_wire_temperature`, `PowerMetrics` channels 4–8 and several SHT sensor types are
+  now marked deprecated upstream. Nothing here read them, so nothing broke; they remain
+  in the schema for wire compatibility.
+
 ## 1.4.2
 
 ### Fixed
