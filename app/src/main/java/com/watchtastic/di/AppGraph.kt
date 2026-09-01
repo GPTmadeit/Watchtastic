@@ -34,7 +34,7 @@ class AppGraph private constructor(context: Context) {
     val prefs = Prefs(appContext)
     val store = MeshStore(appContext, scope, prefs.mutedChannels)
     val haptics = Haptics(appContext, prefs)
-    val notifier = Notifier(appContext)
+    val notifier = Notifier(appContext, prefs)
     val location = LocationProvider(appContext)
     val repository = MeshRepository(appContext, store, prefs, scope)
 
