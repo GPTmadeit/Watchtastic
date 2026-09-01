@@ -1,5 +1,6 @@
 package com.watchtastic.mesh.model
 
+import java.util.Locale
 import kotlinx.serialization.Serializable
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -326,7 +327,7 @@ fun bearingLabel(bearing: Float): String {
 
 fun formatDistance(meters: Double, imperial: Boolean): String = if (imperial) {
     val feet = meters * 3.28084
-    if (feet < 1000) "${feet.toInt()} ft" else "%.1f mi".format(feet / 5280.0)
+    if (feet < 1000) "${feet.toInt()} ft" else "%.1f mi".format(Locale.US, feet / 5280.0)
 } else {
-    if (abs(meters) < 1000) "${meters.toInt()} m" else "%.1f km".format(meters / 1000.0)
+    if (abs(meters) < 1000) "${meters.toInt()} m" else "%.1f km".format(Locale.US, meters / 1000.0)
 }

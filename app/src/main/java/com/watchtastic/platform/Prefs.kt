@@ -30,6 +30,7 @@ class Prefs(context: Context) {
         const val KEY_MUTED_CHANNELS = "muted_channels"
         const val KEY_OK_TO_MQTT = "ok_to_mqtt"
         const val KEY_NOTIFY_NEW_NODES = "notify_new_nodes"
+        const val KEY_READ_NOTIFICATIONS_TTS = "read_notifications_tts"
 
         val DEFAULT_CANNED = listOf(
             "On my way",
@@ -82,6 +83,11 @@ class Prefs(context: Context) {
     val notifyNewNodes: StateFlow<Boolean> = _notifyNewNodes.asStateFlow()
 
     fun setNotifyNewNodes(value: Boolean) = putBool(KEY_NOTIFY_NEW_NODES, value, _notifyNewNodes)
+
+    private val _readNotificationsTts = MutableStateFlow(sp.getBoolean(KEY_READ_NOTIFICATIONS_TTS, true))
+    val readNotificationsTts: StateFlow<Boolean> = _readNotificationsTts.asStateFlow()
+
+    fun setReadNotificationsTts(value: Boolean) = putBool(KEY_READ_NOTIFICATIONS_TTS, value, _readNotificationsTts)
 
     private val _canned = MutableStateFlow(readCanned())
     val cannedMessages: StateFlow<List<String>> = _canned.asStateFlow()

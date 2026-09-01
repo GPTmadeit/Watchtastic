@@ -52,6 +52,7 @@ fun SettingsScreen(
     val haptics by graph.prefs.haptics.collectAsStateWithLifecycle()
     val notifyChannels by graph.prefs.notifyChannels.collectAsStateWithLifecycle()
     val notifyNewNodes by graph.prefs.notifyNewNodes.collectAsStateWithLifecycle()
+    val readTts by graph.prefs.readNotificationsTts.collectAsStateWithLifecycle()
     val imperial by graph.prefs.imperialUnits.collectAsStateWithLifecycle()
     val okToMqtt by graph.prefs.okToMqtt.collectAsStateWithLifecycle()
     val nodes by graph.store.nodes.collectAsStateWithLifecycle()
@@ -272,6 +273,20 @@ fun SettingsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Haptics", maxLines = 1) },
                     secondaryLabel = { Text("Buzz on mesh events", maxLines = 1) },
+                )
+            }
+            item {
+                SwitchButton(
+                    checked = readTts,
+                    onCheckedChange = {
+                        graph.haptics.tick()
+                        graph.prefs.setReadNotificationsTts(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Read aloud (TTS)", maxLines = 1) },
+                    secondaryLabel = {
+                        Text(if (readTts) "Read incoming messages" else "Disabled", maxLines = 1)
+                    },
                 )
             }
 

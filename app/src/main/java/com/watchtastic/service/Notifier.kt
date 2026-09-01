@@ -22,8 +22,13 @@ import com.watchtastic.R
 import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.LinkState
 
+import android.media.AudioAttributes
+import android.speech.tts.TextToSpeech
+import com.watchtastic.platform.Prefs
+import java.util.Locale
+
 /**
- * Notifications, including the Wear "ongoing activity" chip.
+ * Notifications, including the Wear "ongoing activity" chip and Text-To-Speech.
  *
  * The ongoing chip is what makes a background radio link feel native on a watch: while
  * Watchtastic holds a connection, the watch face shows a small live status the wearer can
@@ -32,7 +37,29 @@ import com.watchtastic.mesh.model.LinkState
 // Every notify() below is guarded by the `canPost` permission check; lint can't follow
 // the indirection through that property.
 @SuppressLint("MissingPermission")
-class Notifier(private val context: Context) {
+class Notifier(
+    private val context: Context,
+    private val prefs: Prefs,
+) : TextToSpeech.OnInitListener {
+
+    private var tts: TextToSpeech? = TextToSpeech(context.applicationContext, this)
+    private var isTtsReady = false
+
+    override fun onInit(status: Int) {
+        if (status == TextToSpeech.SUCCESS) {
+            val res = tts?.setLanguage(Locale.getDefault())
+            if (res != TextToSpeech.LANG_MISSING_DATA && res != TextToSpeech.LANG_NOT_SUPPORTED) {
+                isTtsReady = true
+                runCatching {
+                    val audioAttributes = AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build()
+                    tts?.setAudioAttributes(audioAttributes)
+                }
+            }
+        }
+    }
 
     companion object {
         /** Two taps, echoing the "incoming" signature in [com.watchtastic.platform.Haptics]. */
@@ -219,6 +246,19 @@ class Notifier(private val context: Context) {
         runCatching {
             // Keyed per conversation so a chatty channel replaces rather than stacks.
             manager.notify(notificationIdFor(message.conversation), notification)
+        }
+
+        if (prefs.readNotificationsTts.value && isTtsReady) {
+            val speechText = "$senderName: ${message.text}"
+            runCatching {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? android.os.PowerManager
+                val wakeLock = powerManager?.newWakeLock(
+                    android.os.PowerManager.PARTIAL_WAKE_LOCK,
+                    "Watchtastic:TTSWakeLock",
+                )
+                wakeLock?.acquire(5000L)
+            }
+            tts?.speak(speechText, TextToSpeech.QUEUE_ADD, null, "msg_${System.currentTimeMillis()}")
         }
     }
 
