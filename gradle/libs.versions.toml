@@ -2,7 +2,7 @@
 agp = "8.13.2"
 kotlin = "2.3.21"
 protobufPlugin = "0.9.6"
-protobuf = "4.35.1"
+protobuf = "4.36.1"
 
 compileSdk = "36"
 minSdk = "33"
