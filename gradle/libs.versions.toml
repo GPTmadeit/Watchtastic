@@ -1,6 +1,6 @@
 [versions]
 agp = "8.13.2"
-kotlin = "2.3.21"
+kotlin = "2.4.21"
 protobufPlugin = "0.9.6"
 protobuf = "4.35.1"
 
@@ -23,7 +23,7 @@ lifecycle = "2.10.0"
 coreKtx = "1.17.0"
 splashscreen = "1.2.0"
 coroutines = "1.11.0"
-serialization = "1.11.0"
+serialization = "1.12.0"
 
 junit = "4.13.2"
 
