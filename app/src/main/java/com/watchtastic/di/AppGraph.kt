@@ -1,6 +1,7 @@
 package com.watchtastic.di
 
 import android.content.Context
+import com.watchtastic.glance.GlanceUpdater
 import com.watchtastic.mesh.MeshRepository
 import com.watchtastic.mesh.MeshStore
 import com.watchtastic.platform.Haptics
@@ -38,6 +39,9 @@ class AppGraph private constructor(context: Context) {
     val location = LocationProvider(appContext)
     val repository = MeshRepository(appContext, store, prefs, scope)
 
+    /** Feeds the tile and complication, and nudges the system when they go stale. */
+    val glance = GlanceUpdater(appContext, store, repository, prefs, scope)
+
     /**
      * Self-update channel, reading published GitHub Releases. Public repositories need no
      * credentials, and publishing a release is a deliberate act — unlike a shared folder,
@@ -51,6 +55,7 @@ class AppGraph private constructor(context: Context) {
 
     init {
         scope.launch { store.load() }
+        glance.start()
     }
 
     companion object {

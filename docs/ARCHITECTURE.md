@@ -15,6 +15,7 @@ com.watchtastic
 │   └── MeshStore       All app state, as StateFlows + a JSON snapshot
 ├── platform/       Haptics · LocationProvider · Prefs
 ├── service/        MeshService (foreground) · Notifier · reply receiver
+├── glance/         MeshGlance · tile · complication · GlanceUpdater
 ├── update/         GitHubReleaseClient · UpdateManager · Version
 ├── di/             AppGraph — hand-wired, application-scoped
 └── ui/             theme · icons · components · nav · screens
@@ -92,6 +93,27 @@ The same reasoning makes **channel mute local to the watch**. Muting device-side
 the channel's encryption key. Local muting is also what a wearer actually wants: quiet on
 the wrist, unchanged for every other client on the radio.
 
+## Glanceable surfaces: the tile and the complication
+
+Both are *pulled*: the system binds the service and asks for content, and only asks again
+when told something changed. So the work splits three ways:
+
+- **`MeshGlance`** reduces store state to exactly what the surfaces show — link status,
+  unread count, nodes online, and the one conversation a tap should open, if there is
+  only one. It is a pure function, so its rules are unit-tested, and both surfaces render
+  from it, so they cannot disagree with each other.
+- **`GlanceUpdater`** watches the store and requests a refresh only when the glance
+  *changes*. Config download emits a link state per frame; none of those alter what the
+  tile shows, so none of them cost a refresh. Bursts are debounced, because the system
+  throttles tiles that ask too often.
+- **`MeshTileService`** and **`MeshComplicationService`** answer the system's requests.
+  Either can be what starts the process, so they wait (briefly) for the snapshot to load
+  rather than rendering a confident "0 unread" that isn't true.
+
+Unread counting lives in one place, `ChatMessage.isUnread`. The home screen, the ongoing
+chip, the tile and the complication all go through it, and `MeshStore.unreadTotal` is a
+flow, so reading a conversation lowers every count as promptly as a new message raises it.
+
 ## Why there's no map tile layer
 
 The map is a vector plot — range rings, blips, bearings — not a street map.
@@ -112,7 +134,8 @@ handle it.
 
 ## Dependency choices
 
-**No DI framework, no Room, no Play Services.** One of each collaborator and one lifetime
+**No DI framework, no Room, no Play Services.** (The tile and complication are AndroidX
+`wear.tiles` and `wear.watchface` libraries, not Play Services, so this still holds.) One of each collaborator and one lifetime
 for all of them, so `AppGraph` *is* the dependency graph — readable top to bottom. This
 keeps annotation processors out of the build and the app installable on any Wear OS
 device, not just one with Google services.

@@ -29,8 +29,6 @@ Things that are true of the app today, in rough order of how often they bite.
 
 Roughly in order of usefulness per unit of work.
 
-- **A tile and a complication.** A glanceable unread count and mesh status on the watch
-  face is the most obviously missing Wear-native surface.
 - **Store-and-forward requests**, so reconnecting after being out of range can backfill
   what you missed.
 - **Richer traceroute display** — the data is already parsed and stored; it currently gets

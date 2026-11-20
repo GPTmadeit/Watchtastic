@@ -36,4 +36,22 @@ object Routes {
     fun nodeDetail(nodeNum: Int) = "node/$nodeNum"
 
     fun compass(nodeNum: Int) = "compass/$nodeNum"
+
+    /**
+     * Top-level screens an outside surface (tile, complication) may open directly.
+     *
+     * An allowlist rather than "any route": the extra arrives in an Intent, and only
+     * destinations that need no arguments are safe to land on cold.
+     */
+    private val DEEP_LINKABLE = setOf(CONVERSATIONS, NODES, HOME)
+
+    /**
+     * Resolves a deep-link extra. Anything that isn't a known top-level screen is a
+     * conversation key, which is what notifications have always sent — conversation keys
+     * carry a `ch:`/`dm:` prefix, so the two can never collide.
+     */
+    fun forDeepLink(value: String): String =
+        if (value in DEEP_LINKABLE) value else chat(value)
+
+    fun isTopLevel(route: String): Boolean = route in DEEP_LINKABLE
 }

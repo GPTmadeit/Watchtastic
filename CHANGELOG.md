@@ -3,6 +3,52 @@
 All notable changes to this project are documented here. This project follows
 [semantic versioning](https://semver.org).
 
+## 1.6.0
+
+Watchtastic leaves the app: the mesh is now one swipe from the watch face, or on it.
+
+### Added
+
+- **A tile.** Link status, unread messages and nodes online, from the tile carousel. Each
+  number is also the way in: tap the unread count and you land in the conversation that's
+  waiting (or the list, when several are), tap the node count for Nodes, or use the edge
+  button to open — or reconnect — the app. Drawn in the app's own colours rather than the
+  wallpaper's, so green still means "mesh is up".
+- **A watch-face complication** ("Mesh messages"). Short slots show the unread count with
+  the mesh glyph, wide slots add link and node status, and an icon-only variant works as
+  a one-tap launcher. It was the most obviously missing Wear-native surface on the roadmap.
+- 15 more unit tests, covering the glance rules (what counts as unread, what counts as
+  online, where a tap lands, what fits in a complication slot) and the telemetry merge.
+  48 in total.
+
+### Fixed
+
+- **Lightning readings were never kept.** 1.5.0 decoded lightning telemetry correctly,
+  but `MeshStore.applyMetrics` merged telemetry by listing fields by hand, and the two
+  lightning fields weren't on the list — so every strike report was dropped on the way into
+  the store and the lightning card could never appear. The test meant to guard this
+  exercised Kotlin's `copy()` rather than the store's merge, so it couldn't fail. The merge
+  now lives in one place, `NodeMetrics.mergedOver`, with a test that fails if any field
+  is ever left out again.
+- **Environment readings vanished on resync.** A `NodeInfo` (sent for every node on every
+  reconnect) replaced a node's whole telemetry with its device metrics, wiping
+  temperature, humidity, pressure and lightning until the next environment packet. It is
+  now merged like every other telemetry update.
+- **The ongoing chip's unread badge went stale.** It refreshed only when a message
+  arrived, so after reading a conversation it kept claiming messages were unread. The
+  count is now a flow and the badge follows it both ways.
+
+### Changed
+
+- Unread counting has a single definition, `ChatMessage.isUnread`, shared by the home
+  screen, ongoing chip, tile and complication. The home screen previously kept its own copy.
+- **Home's node count no longer includes your own radio**, matching the tile. "4 of 5
+  nodes heard" when only three other nodes had been heard overstated the mesh, and a
+  lone watch claimed one node online. The Nodes list and Status screen are unchanged.
+- Deep links accept a small allowlist of top-level screens as well as conversation keys,
+  so the tile and complication can open Messages, Nodes or Home directly. Those open with
+  the back stack reset to Home, so back behaves the same whatever was last on screen.
+
 ## 1.5.0
 
 Catches the app up with upstream Meshtastic. The vendored protobuf definitions were a

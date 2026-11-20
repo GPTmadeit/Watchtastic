@@ -12,6 +12,7 @@ import com.watchtastic.mesh.model.NodeMetrics
 import com.watchtastic.mesh.model.NodePosition
 import com.watchtastic.mesh.model.RadioInfo
 import com.watchtastic.mesh.model.Waypoint
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -21,7 +22,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -164,7 +167,9 @@ class MeshStore(
             } else {
                 node.copy(
                     position = node.position ?: existing.position,
-                    metrics = if (node.metrics == NodeMetrics()) existing.metrics else node.metrics,
+                    // NodeInfo carries device metrics only; merging keeps the
+                    // environment readings and lightning that arrived separately.
+                    metrics = node.metrics.mergedOver(existing.metrics),
                     lastHeardSeconds = maxOf(node.lastHeardSeconds, existing.lastHeardSeconds),
                     snr = if (node.snr != 0f) node.snr else existing.snr,
                     rssi = if (node.rssi != 0) node.rssi else existing.rssi,
@@ -216,19 +221,7 @@ class MeshStore(
             // Telemetry packets carry one variant at a time; keep the fields this
             // packet didn't mention.
             existing.copy(
-                metrics = NodeMetrics(
-                    batteryLevel = metrics.batteryLevel ?: existing.metrics.batteryLevel,
-                    voltage = metrics.voltage ?: existing.metrics.voltage,
-                    channelUtilization = metrics.channelUtilization
-                        ?: existing.metrics.channelUtilization,
-                    airUtilTx = metrics.airUtilTx ?: existing.metrics.airUtilTx,
-                    uptimeSeconds = metrics.uptimeSeconds ?: existing.metrics.uptimeSeconds,
-                    temperature = metrics.temperature ?: existing.metrics.temperature,
-                    relativeHumidity = metrics.relativeHumidity
-                        ?: existing.metrics.relativeHumidity,
-                    barometricPressure = metrics.barometricPressure
-                        ?: existing.metrics.barometricPressure,
-                ),
+                metrics = metrics.mergedOver(existing.metrics),
                 lastHeardSeconds = maxOf(existing.lastHeardSeconds, heardSeconds),
             )
         }
@@ -387,12 +380,18 @@ class MeshStore(
         return messages.count { !it.outgoing && it.timeMs > since }
     }
 
-    fun totalUnread(): Int {
-        val lastRead = _lastRead.value
-        return _messages.value
-            .filterNot { it.outgoing || it.isReaction }
-            .count { it.timeMs > (lastRead[it.conversation] ?: 0L) }
-    }
+    fun totalUnread(): Int = countUnread(_messages.value, _lastRead.value)
+
+    /**
+     * Unread total as a flow, for surfaces that must follow it both ways.
+     *
+     * Reading a conversation has to *lower* the count as promptly as a new message
+     * raises it. The ongoing notification used to refresh only on arrival, so its badge
+     * kept claiming unread messages long after they had been read — and the tile and
+     * complication would inherit the same staleness without this.
+     */
+    val unreadTotal: StateFlow<Int> = combine(_messages, _lastRead, ::countUnread)
+        .stateIn(scope, SharingStarted.Eagerly, 0)
 
     // ---------------------------------------------------------------- snapshot
 
@@ -407,8 +406,27 @@ class MeshStore(
         val lastRead: Map<String, Long> = emptyMap(),
     )
 
+    /**
+     * Completes once the snapshot has been read (or found absent).
+     *
+     * A tile or complication can be the thing that starts the process, and it asks for
+     * data immediately. Answering before [load] finishes would render "0 unread" and an
+     * empty mesh for a moment even when neither is true.
+     */
+    private val loadedGate = CompletableDeferred<Unit>()
+
+    suspend fun awaitLoaded() = loadedGate.await()
+
     suspend fun load() = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext
+        try {
+            loadSnapshot()
+        } finally {
+            loadedGate.complete(Unit)
+        }
+    }
+
+    private fun loadSnapshot() {
+        if (!file.exists()) return
         runCatching {
             val snapshot = json.decodeFromString<Snapshot>(file.readText())
             _myNodeNum.value = snapshot.myNodeNum
@@ -458,3 +476,6 @@ class MeshStore(
         Unit
     }
 }
+
+private fun countUnread(messages: List<ChatMessage>, lastRead: Map<String, Long>): Int =
+    messages.count { it.isUnread(lastRead) }

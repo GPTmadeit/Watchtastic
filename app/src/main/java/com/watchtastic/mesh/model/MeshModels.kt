@@ -116,6 +116,30 @@ data class NodeMetrics(
             relativeHumidity != null || barometricPressure != null ||
             uptimeSeconds != null || channelUtilization != null || airUtilTx != null ||
             lightningStrikes1h != null || lightningDistanceKm != null
+
+    /**
+     * This reading layered over an [older] one: every field this one carries wins, and
+     * every field it doesn't is kept.
+     *
+     * Telemetry arrives one variant at a time — device metrics, then environment, then
+     * local stats — and `NodeInfo` re-broadcasts carry device metrics only. Replacing the
+     * whole object on each arrival meant a weather station's temperature and lightning
+     * vanished every time its battery report came in. Listing the fields once, here, is
+     * also what keeps a newly added field from being silently dropped by a hand-written
+     * merge somewhere else — which is exactly how lightning went missing.
+     */
+    fun mergedOver(older: NodeMetrics): NodeMetrics = NodeMetrics(
+        batteryLevel = batteryLevel ?: older.batteryLevel,
+        voltage = voltage ?: older.voltage,
+        channelUtilization = channelUtilization ?: older.channelUtilization,
+        airUtilTx = airUtilTx ?: older.airUtilTx,
+        uptimeSeconds = uptimeSeconds ?: older.uptimeSeconds,
+        temperature = temperature ?: older.temperature,
+        relativeHumidity = relativeHumidity ?: older.relativeHumidity,
+        barometricPressure = barometricPressure ?: older.barometricPressure,
+        lightningStrikes1h = lightningStrikes1h ?: older.lightningStrikes1h,
+        lightningDistanceKm = lightningDistanceKm ?: older.lightningDistanceKm,
+    )
 }
 
 @Serializable
@@ -154,6 +178,16 @@ data class MeshNode(
     val displayLong: String
         get() = longName.ifBlank { userId }
 }
+
+/**
+ * The mesh as the wearer means it: every node except our own radio.
+ *
+ * Our radio is always "heard", so counting it makes a lone watch on an empty mesh claim
+ * one node online. The home screen, tile and complication all count through this, so the
+ * numbers a swipe apart can't disagree.
+ */
+fun Collection<MeshNode>.othersThan(myNodeNum: Int): List<MeshNode> =
+    filter { it.num != myNodeNum && !it.isSelf }
 
 @Serializable
 data class MeshChannel(
@@ -228,7 +262,15 @@ data class ChatMessage(
     val hopsAway: Int? = null,
     val pkiEncrypted: Boolean = false,
     val failureReason: String? = null,
-)
+) {
+    /**
+     * The one definition of "unread": something we received — not a tapback — that
+     * arrived after its conversation was last opened. Every unread count in the app
+     * (home screen, ongoing chip, tile, complication) goes through this.
+     */
+    fun isUnread(lastRead: Map<String, Long>): Boolean =
+        !outgoing && !isReaction && timeMs > (lastRead[conversation] ?: 0L)
+}
 
 /**
  * Conversation keys are stable strings so they survive persistence and navigation

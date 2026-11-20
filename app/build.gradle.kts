@@ -16,8 +16,8 @@ val appName = "Watchtastic"
 // Bump both together: versionName drives the APK filename and the Settings footer,
 // versionCode is what Android compares to decide something is an upgrade. Leaving the
 // code at 1 would make a rebuilt APK look like the same build to the installer.
-val appVersionName = "1.5.0"
-val appVersionCode = 7
+val appVersionName = "1.6.0"
+val appVersionCode = 8
 
 /**
  * Release signing is read from an untracked `keystore.properties` at the repo root, so a
@@ -156,6 +156,10 @@ dependencies {
     implementation(libs.wear.ongoing)
     implementation(libs.wear.input)
     implementation(libs.wear.tooling.preview)
+    implementation(libs.wear.tiles)
+    implementation(libs.wear.protolayout)
+    implementation(libs.wear.protolayout.material3)
+    implementation(libs.wear.complications.data.source)
 
     implementation(libs.compose.ui)
     implementation(libs.compose.ui.tooling.preview)

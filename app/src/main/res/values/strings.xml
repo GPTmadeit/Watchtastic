@@ -10,4 +10,9 @@
     <string name="chan_msg_desc">Incoming mesh messages and alerts</string>
     <string name="chan_node_name">New nodes</string>
     <string name="chan_node_desc">When a node you have not seen before joins the mesh</string>
+
+    <!-- Tile and complication, as listed in the watch's tile and complication pickers. -->
+    <string name="tile_label">Mesh</string>
+    <string name="tile_description">Link status, unread messages and nodes online</string>
+    <string name="complication_label">Mesh messages</string>
 </resources>

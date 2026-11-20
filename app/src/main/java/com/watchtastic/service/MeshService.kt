@@ -78,6 +78,7 @@ class MeshService : LifecycleService() {
         super.onCreate()
         graph.notifier.ensureChannels()
         observeLink()
+        observeUnread()
         observeMessages()
         observeNewNodes()
         observeLocationSharing()
@@ -179,7 +180,19 @@ class MeshService : LifecycleService() {
                 // one message. New-node alerts keep their haptic because that channel is
                 // deliberately silent.
                 graph.notifier.postMessage(message, sender, conversationTitle)
-                graph.notifier.updateLink(graph.repository.link.value, graph.store.totalUnread())
+            }
+        }
+    }
+
+    /**
+     * Keeps the ongoing chip's badge honest in both directions. It used to refresh only
+     * when a message arrived, so opening a conversation left it claiming unread messages
+     * that had already been read.
+     */
+    private fun observeUnread() {
+        lifecycleScope.launch {
+            graph.store.unreadTotal.collect { unread ->
+                graph.notifier.updateLink(graph.repository.link.value, unread)
             }
         }
     }

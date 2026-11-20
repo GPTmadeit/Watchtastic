@@ -14,6 +14,10 @@ wear = "1.4.0"
 wearOngoing = "1.1.0"
 wearInput = "1.2.0"
 wearToolingPreview = "1.0.0"
+# Glanceable surfaces: the tile and the watch-face complication.
+wearTiles = "1.6.2"
+wearProtolayout = "1.4.2"
+wearComplications = "1.3.0"
 
 # Pinned to the Android 16 / compileSdk 36 generation. The 1.19.x core and
 # 2.11.x lifecycle lines require AGP 9.1 + compileSdk 37, which would in turn
@@ -39,6 +43,10 @@ wear = { module = "androidx.wear:wear", version.ref = "wear" }
 wear-ongoing = { module = "androidx.wear:wear-ongoing", version.ref = "wearOngoing" }
 wear-input = { module = "androidx.wear:wear-input", version.ref = "wearInput" }
 wear-tooling-preview = { module = "androidx.wear:wear-tooling-preview", version.ref = "wearToolingPreview" }
+wear-tiles = { module = "androidx.wear.tiles:tiles", version.ref = "wearTiles" }
+wear-protolayout = { module = "androidx.wear.protolayout:protolayout", version.ref = "wearProtolayout" }
+wear-protolayout-material3 = { module = "androidx.wear.protolayout:protolayout-material3", version.ref = "wearProtolayout" }
+wear-complications-data-source = { module = "androidx.wear.watchface:watchface-complications-data-source-ktx", version.ref = "wearComplications" }
 
 # Compose core
 compose-ui = { module = "androidx.compose.ui:ui", version.ref = "composeUi" }

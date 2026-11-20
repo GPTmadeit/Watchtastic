@@ -51,6 +51,7 @@ read messages, see who's on the mesh, and navigate toward them from your wrist.
 | | |
 |---|---|
 | 💬 **Messaging** | Channels and direct messages. Dictate, type, tap a saved phrase, or send an emoji reaction. Every message shows whether it actually arrived. |
+| ⌚ **Tile & complication** | Link status, unread count and nodes online one swipe from the watch face — or on the face itself. Tap through to exactly the conversation that's waiting. |
 | 🔔 **Real notifications** | Messages pop up like a text, and you can **reply straight from the notification** without opening the app. New nodes get a quieter alert on their own channel. |
 | 🗺️ **Offline mesh map** | Everyone around you plotted by true bearing and great-circle distance. Twist the crown to zoom from 250 m to 100 km. Works with no network at all. |
 | 🧭 **Compass navigation** | Point the watch at any node and walk. A needle, a distance, and a tick on your wrist when you're facing the right way. |
@@ -142,6 +143,17 @@ instead:
 | Longer | **Dictate or type** — the edge button opens the system input |
 
 You can also reply **directly from the notification** without opening the app at all.
+
+### At a glance
+
+- **Tile** — long-press the watch face, add the **Mesh** tile. It shows whether the radio
+  is connected, how many messages are unread and how many nodes are in range. Tap the
+  unread count to go straight to the waiting conversation (or the list, if several are
+  waiting), or the node count to open Nodes.
+- **Complication** — edit your watch face and pick **Mesh messages** for any slot. Short
+  slots show the unread count; wide slots add link and node status.
+
+Both update themselves as messages arrive and as you read them — no need to open the app.
 
 ### Finding someone
 
@@ -287,7 +299,7 @@ individually verified.
 ```bash
 git clone https://github.com/GPTmadeit/Watchtastic.git
 cd Watchtastic
-./gradlew testDebugUnitTest     # 26 unit tests, no device needed
+./gradlew testDebugUnitTest     # 48 unit tests, no device needed
 ./gradlew assembleDebug
 ```
 

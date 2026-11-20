@@ -62,10 +62,44 @@ class TelemetryTest {
     fun `metrics merge does not lose fields the newest packet omitted`() {
         // Telemetry packets carry one variant at a time, so a device-metrics packet
         // arriving after an environment one must not erase the temperature.
-        val existing = NodeMetrics(temperature = 11.5f, lightningStrikes1h = 3)
-        val merged = existing.copy(batteryLevel = 78)
+        // (This test used to exercise `copy()`, which can't fail — while the store's real
+        // hand-written merge dropped both lightning fields on every packet.)
+        val environment = NodeMetrics(temperature = 11.5f, lightningStrikes1h = 3)
+        val device = NodeMetrics(batteryLevel = 78, voltage = 3.9f)
+        val merged = device.mergedOver(environment)
         assertEquals(11.5f, merged.temperature)
         assertEquals(3, merged.lightningStrikes1h)
         assertEquals(78, merged.batteryLevel)
+        assertEquals(3.9f, merged.voltage)
+    }
+
+    @Test
+    fun `lightning survives being merged into a node that had none`() {
+        val incoming = NodeMetrics(lightningStrikes1h = 5, lightningDistanceKm = 7.5f)
+        val merged = incoming.mergedOver(NodeMetrics(batteryLevel = 90))
+        assertEquals(5, merged.lightningStrikes1h)
+        assertEquals(7.5f, merged.lightningDistanceKm)
+        assertTrue(merged.hasLightning)
+    }
+
+    @Test
+    fun `newer readings win over older ones`() {
+        val merged = NodeMetrics(lightningStrikes1h = 0, batteryLevel = 40)
+            .mergedOver(NodeMetrics(lightningStrikes1h = 9, batteryLevel = 80))
+        assertEquals(0, merged.lightningStrikes1h)
+        assertEquals(40, merged.batteryLevel)
+    }
+
+    @Test
+    fun `merge carries every field`() {
+        // Guards the class of bug, not just the instance: when a field is added to
+        // NodeMetrics, a merge that forgets it fails here.
+        val full = NodeMetrics(
+            batteryLevel = 1, voltage = 2f, channelUtilization = 3f, airUtilTx = 4f,
+            uptimeSeconds = 5, temperature = 6f, relativeHumidity = 7f,
+            barometricPressure = 8f, lightningStrikes1h = 9, lightningDistanceKm = 10f,
+        )
+        assertEquals(full, NodeMetrics().mergedOver(full))
+        assertEquals(full, full.mergedOver(NodeMetrics()))
     }
 }

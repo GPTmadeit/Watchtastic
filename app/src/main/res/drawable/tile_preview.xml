@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Shown in the tile picker. A schematic of MeshTileService's layout — title, the
+     unread and online cards side by side, and the edge button — in the tile's own
+     colours, so what the wearer picks is what they get. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="192dp"
+    android:height="192dp"
+    android:viewportWidth="192"
+    android:viewportHeight="192">
+    <!-- Screen -->
+    <path
+        android:fillColor="#000000"
+        android:pathData="M96,0a96,96 0,1 1,0 192a96,96 0,1 1,0 -192z" />
+    <!-- Title -->
+    <path
+        android:fillColor="#67EA94"
+        android:pathData="M70,30h52a5,5 0,0 1,0 10h-52a5,5 0,0 1,0 -10z" />
+    <!-- Unread card (highlighted) -->
+    <path
+        android:fillColor="#67EA94"
+        android:pathData="M42,56h48a12,12 0,0 1,12 12v44a12,12 0,0 1,-12 12h-48a12,12 0,0 1,-12 -12v-44a12,12 0,0 1,12 -12z" />
+    <path
+        android:fillColor="#05150C"
+        android:pathData="M54,76h24v20h-24z M50,104h32a3,3 0,0 1,0 6h-32a3,3 0,0 1,0 -6z" />
+    <!-- Online card -->
+    <path
+        android:fillColor="#2C2D3C"
+        android:pathData="M110,56h40a12,12 0,0 1,12 12v44a12,12 0,0 1,-12 12h-40a12,12 0,0 1,-12 -12v-44a12,12 0,0 1,12 -12z" />
+    <path
+        android:fillColor="#D6DCEC"
+        android:pathData="M120,76h20v20h-20z M116,104h28a3,3 0,0 1,0 6h-28a3,3 0,0 1,0 -6z" />
+    <!-- Edge button -->
+    <path
+        android:fillColor="#2C2D3C"
+        android:pathData="M44,140h104a8,8 0,0 1,7.6 10.5a64,64 0,0 1,-119.2 0a8,8 0,0 1,7.6 -10.5z" />
+    <path
+        android:fillColor="#D6DCEC"
+        android:pathData="M80,153h32a4,4 0,0 1,0 8h-32a4,4 0,0 1,0 -8z" />
+</vector>
