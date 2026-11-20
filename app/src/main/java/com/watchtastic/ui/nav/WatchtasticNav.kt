@@ -46,12 +46,21 @@ fun WatchtasticNav(
     val graph = LocalAppGraph.current
     val savedRadio by graph.prefs.radioAddress.collectAsStateWithLifecycle()
 
-    // A notification tap arrives as a conversation key. Clearing it afterwards matters:
-    // otherwise tapping the same conversation's notification twice would be a no-op,
-    // because the key wouldn't have changed.
+    // A notification tap arrives as a conversation key; a tile or complication tap as one
+    // of a few top-level routes. Clearing it afterwards matters: otherwise tapping the
+    // same target twice would be a no-op, because the value wouldn't have changed.
     LaunchedEffect(deepLinkRoute) {
         if (deepLinkRoute != null && savedRadio != null) {
-            navController.navigate(Routes.chat(deepLinkRoute)) { launchSingleTop = true }
+            val target = Routes.forDeepLink(deepLinkRoute)
+            navController.navigate(target) {
+                launchSingleTop = true
+                // A tile tap means "show me this screen", not "stack it on whatever was
+                // open last" — otherwise Open-from-tile while in a chat would leave a
+                // second Home on top, and back would wander. Conversations keep their
+                // existing behaviour: a notification opens the thread over the
+                // current screen.
+                if (Routes.isTopLevel(target)) popUpTo(Routes.HOME)
+            }
             onDeepLinkHandled()
         }
     }

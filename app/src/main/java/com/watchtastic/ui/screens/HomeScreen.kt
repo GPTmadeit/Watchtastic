@@ -25,6 +25,7 @@ import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.watchtastic.mesh.MeshConstants
 import com.watchtastic.mesh.model.LinkState
+import com.watchtastic.mesh.model.othersThan
 import com.watchtastic.ui.LocalAppGraph
 import com.watchtastic.ui.components.PulseDot
 import com.watchtastic.ui.components.rememberNow
@@ -52,14 +53,13 @@ fun HomeScreen(
     val graph = LocalAppGraph.current
     val link by graph.repository.link.collectAsStateWithLifecycle()
     val nodes by graph.store.nodes.collectAsStateWithLifecycle()
-    val messages by graph.store.messages.collectAsStateWithLifecycle()
-    val lastRead by graph.store.lastRead.collectAsStateWithLifecycle()
+    val unread by graph.store.unreadTotal.collectAsStateWithLifecycle()
+    val myNodeNum by graph.store.myNodeNum.collectAsStateWithLifecycle()
 
     val now by rememberNow()
-    val online = nodes.values.count { it.isOnline(now, MeshConstants.NODE_STALE_MS) }
-    val unread = messages
-        .filterNot { it.outgoing || it.isReaction }
-        .count { it.timeMs > (lastRead[it.conversation] ?: 0L) }
+    // Same rule as the tile: our own radio isn't "someone on the mesh".
+    val others = nodes.values.othersThan(myNodeNum)
+    val online = others.count { it.isOnline(now, MeshConstants.NODE_STALE_MS) }
 
     val listState = rememberTransformingLazyColumnState()
 
@@ -73,7 +73,7 @@ fun HomeScreen(
                 LinkCard(
                     link = link,
                     online = online,
-                    total = nodes.size,
+                    total = others.size,
                     onClick = { if (!link.isUsable) onOpenConnect() },
                 )
             }
@@ -92,7 +92,7 @@ fun HomeScreen(
                 HubButton(
                     icon = WtIcons.Nodes,
                     label = "Nodes",
-                    secondary = "$online of ${nodes.size} online",
+                    secondary = "$online of ${others.size} online",
                     onClick = { graph.haptics.select(); onOpenNodes() },
                 )
             }

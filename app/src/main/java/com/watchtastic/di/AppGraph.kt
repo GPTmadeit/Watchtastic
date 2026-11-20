@@ -1,6 +1,7 @@
 package com.watchtastic.di
 
 import android.content.Context
+import com.watchtastic.glance.GlanceUpdater
 import com.watchtastic.mesh.MeshRepository
 import com.watchtastic.mesh.MeshStore
 import com.watchtastic.platform.Haptics
@@ -13,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Application-scoped object graph, assembled by hand.
@@ -32,11 +34,18 @@ class AppGraph private constructor(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val prefs = Prefs(appContext)
-    val store = MeshStore(appContext, scope, prefs.mutedChannels)
+    val store = MeshStore(
+        File(appContext.filesDir, MeshStore.FILE_NAME),
+        scope,
+        prefs.mutedChannels,
+    )
     val haptics = Haptics(appContext, prefs)
     val notifier = Notifier(appContext)
     val location = LocationProvider(appContext)
     val repository = MeshRepository(appContext, store, prefs, scope)
+
+    /** Feeds the tile and complication, and nudges the system when they go stale. */
+    val glance = GlanceUpdater(appContext, store, repository, prefs, scope)
 
     /**
      * Self-update channel, reading published GitHub Releases. Public repositories need no
@@ -51,6 +60,7 @@ class AppGraph private constructor(context: Context) {
 
     init {
         scope.launch { store.load() }
+        glance.start()
     }
 
     companion object {

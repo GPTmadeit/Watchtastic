@@ -28,10 +28,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
@@ -40,6 +40,7 @@ import org.meshtastic.proto.ConfigProtos
 import org.meshtastic.proto.MeshProtos
 import org.meshtastic.proto.Portnums
 import kotlin.coroutines.coroutineContext
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.random.Random
 
 /**
@@ -80,6 +81,15 @@ class MeshRepository(
 
         /** `Data.bitfield` bit 0: the sender approves this packet being relayed to MQTT. */
         const val BITFIELD_OK_TO_MQTT = 1
+
+        /**
+         * How long a message may wait in the outbox for the radio. Long enough to ride
+         * out a reconnect cycle or a radio reboot; short enough that "on my way" is
+         * never delivered an afternoon late.
+         */
+        const val OUTBOX_MAX_AGE_MS = 30 * 60 * 1000L
+
+        const val OUTBOX_EXPIRED = "Radio out of reach"
     }
 
     val scanner = BleScanner(context)
@@ -118,6 +128,16 @@ class MeshRepository(
 
     @Volatile
     private var configGate: CompletableDeferred<Unit>? = null
+
+    /**
+     * Ids of outgoing messages written to the radio by this process. "Queued" alone
+     * can't tell the outbox apart from a write still awaiting its QueueStatus, and only
+     * the former may be flushed.
+     */
+    private val inFlight: MutableSet<Int> = ConcurrentHashMap.newKeySet()
+
+    /** Serialises outbox flushes, since a reconnect and a resync can both trigger one. */
+    private val outboxMutex = Mutex()
 
     /** Set when the user explicitly disconnects, so the retry loop doesn't fight them. */
     @Volatile
@@ -185,6 +205,11 @@ class MeshRepository(
         var backoff = BACKOFF_START_MS
         var attempt = 0
 
+        // The radio's config download writes into the store. Starting it before the
+        // snapshot has finished loading would let the load land on top and replace live
+        // state with the previous session's.
+        store.awaitLoaded()
+
         while (coroutineContext.isActive && !userStopped) {
             // Scoped to this attempt, so the cleanup below can only ever tear down the
             // session this iteration opened — never one a newer attempt has since put in
@@ -228,9 +253,12 @@ class MeshRepository(
                 attempt = 0
                 backoff = BACKOFF_START_MS
                 startHeartbeat(s)
+                syncRadioClock()
+                flushOutbox()
 
-                // Park here for the life of the connection.
-                val status = s.disconnected.first()
+                // Park here for the life of the connection. A deferred, not a flow, so a
+                // drop that happened while we were busy above is still seen.
+                val status = s.dropped.await()
                 Log.i(TAG, "link dropped (status=$status)")
                 if (userStopped) break
             } catch (e: CancellationException) {
@@ -261,7 +289,15 @@ class MeshRepository(
         _link.value = LinkState.Syncing(name, 0f)
         s.requestConfig(nonce)
         try {
-            withTimeout(CONFIG_TIMEOUT_MS) { gate.await() }
+            withTimeout(CONFIG_TIMEOUT_MS) {
+                // Fail fast if the link goes mid-download. Waiting on the gate alone sat
+                // out the whole timeout on a dead link — and the edge of range, where
+                // links drop, is exactly where reconnects (and so syncs) happen.
+                select<Unit> {
+                    gate.onAwait { }
+                    s.dropped.onAwait { throw GattException("Radio disconnected during sync") }
+                }
+            }
         } catch (e: TimeoutCancellationException) {
             throw GattException("Radio stopped responding during sync")
         } finally {
@@ -435,7 +471,18 @@ class MeshRepository(
             num to (store.nodes.value[num]?.channelIndex ?: 0)
         }
 
-    suspend fun sendText(conversation: String, text: String, replyTo: Int = 0): Result<Int> =
+    /**
+     * Sends a text message — or, when the radio is out of reach, keeps it in the outbox
+     * and sends it the moment the link comes back.
+     *
+     * A watch drifts in and out of range of the radio in a pack all day, so "not
+     * connected" is a normal moment to want to reply, not an error. Refusing outright
+     * made the wearer wait and retype; now the message is accepted, shown as waiting, and
+     * flushed on reconnect (see [flushOutbox]) — or marked failed after
+     * [OUTBOX_MAX_AGE_MS], because a reply delivered hours late can do more harm than one
+     * that visibly didn't go.
+     */
+    suspend fun sendText(conversation: String, text: String, replyTo: Int = 0): Result<SendReceipt> =
         runCatching {
             val trimmed = text.trim()
             require(trimmed.isNotEmpty()) { "Nothing to send" }
@@ -443,18 +490,10 @@ class MeshRepository(
             require(bytes.size <= MeshConstants.MAX_TEXT_BYTES) {
                 "Too long (${bytes.size}/${MeshConstants.MAX_TEXT_BYTES} bytes)"
             }
-
             val (dest, channel) = routeFor(conversation)
-            val id = nextPacketId()
-            val builder = airData(Portnums.PortNum.TEXT_MESSAGE_APP)
-                .setPayload(ByteString.copyFrom(bytes))
-            if (replyTo != 0) builder.setReplyId(replyTo)
-
-            // Optimistic insert: the bubble appears immediately and its status ticks up
-            // as QueueStatus and Routing come back.
-            store.addMessage(
+            submit(
                 ChatMessage(
-                    id = id,
+                    id = nextPacketId(),
                     conversation = conversation,
                     fromNum = store.myNodeNum.value,
                     toNum = dest,
@@ -466,26 +505,15 @@ class MeshRepository(
                     replyId = replyTo,
                 ),
             )
-
-            sendPacket(packetTo(dest, channel, builder.build(), wantAck = true, id = id))
-            watchForAck(id)
-            id
         }.onFailure { notify(it.message ?: "Send failed") }
 
     /** Tapback. The `emoji` field is a flag; the payload carries the glyph. */
-    suspend fun sendReaction(conversation: String, targetId: Int, emoji: String): Result<Unit> =
+    suspend fun sendReaction(conversation: String, targetId: Int, emoji: String): Result<SendReceipt> =
         runCatching {
             val (dest, channel) = routeFor(conversation)
-            val id = nextPacketId()
-            val data = airData(Portnums.PortNum.TEXT_MESSAGE_APP)
-                .setPayload(ByteString.copyFromUtf8(emoji))
-                .setEmoji(1)
-                .setReplyId(targetId)
-                .build()
-
-            store.addMessage(
+            submit(
                 ChatMessage(
-                    id = id,
+                    id = nextPacketId(),
                     conversation = conversation,
                     fromNum = store.myNodeNum.value,
                     toNum = dest,
@@ -498,8 +526,124 @@ class MeshRepository(
                     isReaction = true,
                 ),
             )
-            sendPacket(packetTo(dest, channel, data, wantAck = false, id = id))
         }.onFailure { notify(it.message ?: "Reaction failed") }
+
+    /**
+     * Sends a failed message again, as a fresh message at the bottom of the thread.
+     *
+     * A new packet id rather than a retransmission: the old one may have partly crossed
+     * the mesh, and nodes that saw it would silently drop a repeat of the same id.
+     */
+    suspend fun resend(messageId: Int): Result<SendReceipt> = runCatching {
+        val old = store.messages.value.firstOrNull { it.id == messageId && it.outgoing }
+            ?: throw GattException("That message is gone")
+        require(old.status == MsgStatus.Failed) { "Already on its way" }
+        store.deleteMessage(old.id)
+        submit(
+            old.copy(
+                id = nextPacketId(),
+                timeMs = System.currentTimeMillis(),
+                status = MsgStatus.Queued,
+                failureReason = null,
+            ),
+        )
+    }.onFailure { notify(it.message ?: "Resend failed") }
+
+    /** Records [message] in its thread straight away, then sends it or queues it. */
+    private suspend fun submit(message: ChatMessage): SendReceipt {
+        // Optimistic insert: the bubble appears immediately and its status ticks up as
+        // QueueStatus and Routing come back.
+        store.addMessage(message)
+        val sent = isConnected && transmit(message)
+        if (!sent) {
+            notify("Queued — sends on reconnect")
+            expireIfUnsent(message.id, message.timeMs)
+        }
+        return SendReceipt(message.id, queued = !sent)
+    }
+
+    /**
+     * Writes one outgoing message to the radio. Returns false — leaving it queued for the
+     * next [flushOutbox] — if the link isn't there to take it.
+     *
+     * Previously a failed write threw after the message had already been shown as
+     * Queued, and since the acknowledgement watchdog was only armed after a successful
+     * write, nothing ever moved it on: it sat on "Queued" for good.
+     */
+    private suspend fun transmit(message: ChatMessage): Boolean {
+        // Claimed before writing, so a flush racing a direct send can't double-send it.
+        if (!inFlight.add(message.id)) return true
+        return try {
+            val (dest, channel) = routeFor(message.conversation)
+            sendPacket(packetFor(message, dest, channel))
+            // Reactions don't ask for an ACK, so there is nothing to wait for.
+            if (!message.isReaction) watchForAck(message.id)
+            true
+        } catch (e: CancellationException) {
+            inFlight.remove(message.id)
+            throw e
+        } catch (e: Exception) {
+            inFlight.remove(message.id)
+            Log.w(TAG, "send deferred to outbox: ${e.message}")
+            false
+        }
+    }
+
+    private fun packetFor(message: ChatMessage, dest: Int, channel: Int): MeshProtos.MeshPacket {
+        val data = airData(Portnums.PortNum.TEXT_MESSAGE_APP)
+            .setPayload(ByteString.copyFromUtf8(message.text))
+        if (message.replyId != 0) data.setReplyId(message.replyId)
+        if (message.isReaction) data.setEmoji(1)
+        return packetTo(dest, channel, data.build(), wantAck = !message.isReaction, id = message.id)
+    }
+
+    /**
+     * Sends everything that queued up while the radio was out of reach, oldest first.
+     * Runs once the link is fully synced, so routes reflect the radio's current node DB.
+     */
+    private suspend fun flushOutbox() = outboxMutex.withLock {
+        val now = System.currentTimeMillis()
+        val pending = store.messages.value.filter {
+            it.outgoing && it.status == MsgStatus.Queued && it.id !in inFlight
+        }
+        for (message in pending) {
+            if (now - message.timeMs > OUTBOX_MAX_AGE_MS) {
+                store.updateMessageStatus(message.id, MsgStatus.Failed, OUTBOX_EXPIRED)
+            } else if (!transmit(message)) {
+                break // The link went again; the rest wait for the next connection.
+            }
+        }
+    }
+
+    /** Fails a message that never left the outbox, once it is too old to be worth sending. */
+    private fun expireIfUnsent(id: Int, queuedAtMs: Long) {
+        scope.launch {
+            delay((queuedAtMs + OUTBOX_MAX_AGE_MS - System.currentTimeMillis()).coerceAtLeast(0L))
+            val message = store.messages.value.firstOrNull { it.id == id && it.outgoing }
+                ?: return@launch
+            if (message.status == MsgStatus.Queued && id !in inFlight) {
+                store.updateMessageStatus(id, MsgStatus.Failed, OUTBOX_EXPIRED)
+            }
+        }
+    }
+
+    /**
+     * Arms expiry for anything still queued from a previous run — otherwise a message
+     * left in the outbox when the process died would show as waiting indefinitely if
+     * the radio never came back.
+     */
+    private fun resumeOutbox() {
+        scope.launch {
+            store.awaitLoaded()
+            store.messages.value
+                .filter { it.outgoing && it.status == MsgStatus.Queued }
+                .forEach { expireIfUnsent(it.id, it.timeMs) }
+        }
+    }
+
+    init {
+        resumeOutbox()
+    }
 
     /**
      * Marks a message failed if nothing acknowledges it. Without this, a message the
@@ -513,6 +657,22 @@ class MeshRepository(
                 store.updateMessageStatus(id, MsgStatus.Failed, "No acknowledgement")
             }
         }
+    }
+
+    /**
+     * Gives the radio the watch's wall-clock time.
+     *
+     * A radio without GPS has no clock until a client provides one — upstream's own
+     * schema says so — and Watchtastic exists for exactly the situation where no phone
+     * is around to do it. Without a clock the radio stamps traffic with uptime instead
+     * of dates, and its node database's "last heard" times are boot-relative. The
+     * firmware applies this at NTP quality, which ranks below GPS, so a radio with a fix
+     * keeps its own time; this only ever fills a gap or corrects drift.
+     */
+    private suspend fun syncRadioClock() {
+        runCatching {
+            sendAdmin { it.setSetTimeOnly((System.currentTimeMillis() / 1000L).toInt()) }
+        }.onFailure { Log.w(TAG, "clock sync failed: ${it.message}") }
     }
 
     suspend fun requestPosition(nodeNum: Int): Result<Unit> = runCatching {
@@ -747,12 +907,25 @@ class MeshRepository(
         val s = session ?: return
         val name = _link.value.deviceLabel ?: s.deviceName
         scope.launch {
-            runCatching { syncConfig(s, name) }
-                .onSuccess { _link.value = LinkState.Connected(name) }
+            val synced = runCatching { syncConfig(s, name) }
                 .onFailure { notify("Resync failed: ${it.message}") }
+                .isSuccess
+            if (synced) {
+                _link.value = LinkState.Connected(name)
+                // Anything sent while the resync had the link marked unusable went to
+                // the outbox; without this it waited for the next reconnect, or expired.
+                flushOutbox()
+            }
         }
     }
 }
+
+/** What became of a message handed to [MeshRepository.sendText] and friends. */
+data class SendReceipt(
+    val id: Int,
+    /** True when it is waiting in the outbox for the radio rather than already sent. */
+    val queued: Boolean,
+)
 
 /** Turns firmware routing codes into something worth showing on a 1.2" screen. */
 private fun MeshProtos.Routing.Error.humanReason(): String = when (this) {

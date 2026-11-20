@@ -3,6 +3,98 @@
 All notable changes to this project are documented here. This project follows
 [semantic versioning](https://semver.org).
 
+## 1.6.0
+
+Watchtastic leaves the app — the mesh is now one swipe from the watch face, or on it —
+and stops losing messages at the edge of range.
+
+### Added
+
+- **A tile.** Link status, unread messages and nodes online, from the tile carousel. Each
+  number is also the way in: tap the unread count and you land in the conversation that's
+  waiting (or the list, when several are), tap the node count for Nodes, or use the edge
+  button to open — or reconnect — the app. Drawn in the app's own colours rather than the
+  wallpaper's, so green still means "mesh is up".
+- **A watch-face complication** ("Mesh messages"). Short slots show the unread count with
+  the mesh glyph, wide slots add link and node status, and an icon-only variant works as
+  a one-tap launcher. It was the most obviously missing Wear-native surface on the roadmap.
+- **An outbox.** Sending while the radio is out of reach used to be refused, so the
+  wearer had to wait and retype. Now the message is kept — marked *Sends when radio
+  reconnects* — and goes out by itself once the link is back and synced. Anything still
+  waiting after 30 minutes is marked as not sent instead, because "on my way" delivered an
+  afternoon late is worse than one that visibly didn't go. Replies from a notification use
+  the same outbox, and start the link if nothing else is trying to.
+- **Tap a failed message to resend it**, as a fresh packet at the bottom of the thread.
+- **The watch sets the radio's clock.** A radio without GPS has no wall clock until a
+  client provides one, and Watchtastic is built for when no phone is around to do it.
+  Without one, the radio stamps traffic with uptime instead of dates. The firmware applies
+  the watch's time at NTP quality, which ranks below GPS, so a radio with a fix keeps its
+  own.
+- **Distinct haptics for "sent" and "queued"**, so the wrist can tell which happened.
+- 48 more unit tests, 81 in total. Most notably, packet decoding is now tested end to end:
+  real `FromRadio` protobufs go through the real router into a real store, which is the
+  kind of test that would have caught the lightning bug below. Each new test was checked
+  by reintroducing the bug it guards and watching it fail.
+
+### Fixed
+
+- **Lightning readings were never kept.** 1.5.0 decoded lightning telemetry correctly,
+  but `MeshStore.applyMetrics` merged telemetry by listing fields by hand, and the two
+  lightning fields weren't on the list — so every strike report was dropped on the way into
+  the store and the lightning card could never appear. The test meant to guard this
+  exercised Kotlin's `copy()` rather than the store's merge, so it couldn't fail. The merge
+  now lives in one place, `NodeMetrics.mergedOver`, with a test that fails if any field
+  is ever left out again.
+- **Environment readings vanished on resync.** A `NodeInfo` (sent for every node on every
+  reconnect) replaced a node's whole telemetry with its device metrics, wiping
+  temperature, humidity, pressure and lightning until the next environment packet. It is
+  now merged like every other telemetry update.
+- **The ongoing chip's unread badge went stale.** It refreshed only when a message
+  arrived, so after reading a conversation it kept claiming messages were unread. The
+  count is now a flow and the badge follows it both ways.
+- **A message could sit on "Queued" forever.** It was shown in the thread before being
+  written to the radio, and if the write then failed — radio not connected, link dropped —
+  nothing ever moved it on, because the delivery watchdog was only armed after a
+  successful write. It now goes to the outbox instead.
+- **Replying from a notification could lose the reply.** Notifications outlive the
+  process, so a reply can be what starts it. The reply went into the store before the
+  saved history had loaded, and the load then replaced the store wholesale.
+- **Messages received while away could arrive already "read".** The radio holds traffic
+  while the watch is out of range and delivers it on reconnect with its true, earlier
+  timestamps — older than the last time the thread was opened, so it never counted as
+  unread. Unread is now judged by when the *watch* received a message.
+- **A dropped link could go unnoticed.** Disconnection was signalled on a flow that nobody
+  listened to until sync had finished: a drop mid-sync left the app waiting out a
+  90-second timeout before retrying — at the edge of range, where reconnects happen — and
+  a drop in the instant between sync and listening could have shown "Connected" on a dead
+  link indefinitely. It is now a one-shot signal that can't be missed, and sync fails the
+  moment the link goes.
+- **The radio's config could be overwritten at startup.** The saved snapshot loads in the
+  background; if the radio connected first, the load landed on top of the fresh config.
+  Connecting now waits for the snapshot.
+- **Nodes heard by a clockless radio showed as "56 years ago",** because boot-relative
+  seconds were read as dates. Timestamps before 2020 or well ahead of the watch are now
+  treated as unknown, using the same floor as the firmware. Radio times are also read
+  unsigned, as the wire format intends, so they won't turn negative in 2038.
+
+### Changed
+
+- Unread counting has a single definition, `ChatMessage.isUnread`, shared by the home
+  screen, ongoing chip, tile and complication. The home screen previously kept its own copy.
+- **Home's node count no longer includes your own radio**, matching the tile. "4 of 5
+  nodes heard" when only three other nodes had been heard overstated the mesh, and a
+  lone watch claimed one node online. The Nodes list and Status screen are unchanged.
+- Deep links accept a small allowlist of top-level screens as well as conversation keys,
+  so the tile and complication can open Messages, Nodes or Home directly. Those open with
+  the back stack reset to Home, so back behaves the same whatever was last on screen.
+- **History is kept per conversation**: the newest 200 of each, up to 1,000 overall. The
+  old single cap of 500 let one busy public channel evict every quiet direct conversation
+  within a day or two.
+- **An unreadable snapshot is set aside, not deleted** (as `mesh-store.json.unreadable`).
+  Starting fresh is still right for the app, but if the cause were a decoding bug in some
+  future version, deleting the file would have destroyed the wearer's history for good.
+- `MeshStore` takes a `File` rather than a `Context`, so it runs under plain JVM tests.
+
 ## 1.5.0
 
 Catches the app up with upstream Meshtastic. The vendored protobuf definitions were a

@@ -51,6 +51,7 @@ read messages, see who's on the mesh, and navigate toward them from your wrist.
 | | |
 |---|---|
 | 💬 **Messaging** | Channels and direct messages. Dictate, type, tap a saved phrase, or send an emoji reaction. Every message shows whether it actually arrived. |
+| ⌚ **Tile & complication** | Link status, unread count and nodes online one swipe from the watch face — or on the face itself. Tap through to exactly the conversation that's waiting. |
 | 🔔 **Real notifications** | Messages pop up like a text, and you can **reply straight from the notification** without opening the app. New nodes get a quieter alert on their own channel. |
 | 🗺️ **Offline mesh map** | Everyone around you plotted by true bearing and great-circle distance. Twist the crown to zoom from 250 m to 100 km. Works with no network at all. |
 | 🧭 **Compass navigation** | Point the watch at any node and walk. A needle, a distance, and a tick on your wrist when you're facing the right way. |
@@ -143,6 +144,22 @@ instead:
 
 You can also reply **directly from the notification** without opening the app at all.
 
+**Out of range? Send anyway.** If the radio isn't reachable, the message waits in an
+outbox — marked *Sends when radio reconnects* — and goes out by itself as soon as the link
+is back. Anything still waiting after 30 minutes is marked as not sent rather than
+delivered late. Any message that fails can be **tapped to resend**.
+
+### At a glance
+
+- **Tile** — long-press the watch face, add the **Mesh** tile. It shows whether the radio
+  is connected, how many messages are unread and how many nodes are in range. Tap the
+  unread count to go straight to the waiting conversation (or the list, if several are
+  waiting), or the node count to open Nodes.
+- **Complication** — edit your watch face and pick **Mesh messages** for any slot. Short
+  slots show the unread count; wide slots add link and node status.
+
+Both update themselves as messages arrive and as you read them — no need to open the app.
+
 ### Finding someone
 
 - **Map** shows everyone plotted around you. Turn the crown to change the range. Tap a
@@ -197,7 +214,8 @@ separate screen, since each change reboots the radio.
 | **Channel shows the wrong name** | Fixed in 1.4.0. The primary channel takes its name from your modem preset. |
 | **Messages don't reach my MQTT logger** | Fixed in 1.4.0. Check **Settings → Allow MQTT relay** is on. |
 | **Messages don't pop up** | Watch **Settings → Apps → Watchtastic → Notifications** and make sure the *Messages* channel isn't silenced. |
-| **Keeps reconnecting** | Normal at the edge of range — it backs off and retries. Check the radio's battery. |
+| **Keeps reconnecting** | Normal at the edge of range — it backs off and retries. Check the radio's battery. Anything you send meanwhile waits in the outbox. |
+| **Message says "Radio out of reach"** | It waited 30 minutes for the radio without the link coming back. Tap it to try again. |
 | **Map says "No position"** | Neither the watch nor the radio has a fix yet. Enable **Share watch GPS**, or wait for the radio's GPS. |
 
 Still stuck? [Open an issue](https://github.com/GPTmadeit/Watchtastic/issues/new?template=bug_report.yml)
@@ -287,7 +305,7 @@ individually verified.
 ```bash
 git clone https://github.com/GPTmadeit/Watchtastic.git
 cd Watchtastic
-./gradlew testDebugUnitTest     # 26 unit tests, no device needed
+./gradlew testDebugUnitTest     # 81 unit tests, no device needed
 ./gradlew assembleDebug
 ```
 

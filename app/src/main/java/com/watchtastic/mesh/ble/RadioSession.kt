@@ -6,6 +6,7 @@ import android.content.Context
 import android.util.Log
 import com.watchtastic.mesh.MeshConstants
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -55,7 +56,8 @@ class RadioSession(
     )
     val incoming: SharedFlow<MeshProtos.FromRadio> = _incoming
 
-    val disconnected: SharedFlow<Int> = link.disconnected
+    /** Completes when the radio drops the link; see [GattLink.dropped]. */
+    val dropped: Deferred<Int> = link.dropped
 
     val mtu: Int get() = link.negotiatedMtu
 

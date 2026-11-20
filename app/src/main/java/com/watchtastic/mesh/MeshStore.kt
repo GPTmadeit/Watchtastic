@@ -1,6 +1,5 @@
 package com.watchtastic.mesh
 
-import android.content.Context
 import android.util.Log
 import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.Conversation
@@ -12,6 +11,8 @@ import com.watchtastic.mesh.model.NodeMetrics
 import com.watchtastic.mesh.model.NodePosition
 import com.watchtastic.mesh.model.RadioInfo
 import com.watchtastic.mesh.model.Waypoint
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -21,7 +22,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -40,22 +43,21 @@ import java.io.File
  * populated node list even before the radio reconnects.
  */
 class MeshStore(
-    context: Context,
+    /** Where the snapshot lives. A plain file rather than a Context, so tests can run it. */
+    private val file: File,
     private val scope: CoroutineScope,
     /** Channels the wearer has silenced on this watch; see [com.watchtastic.platform.Prefs]. */
     private val mutedChannels: StateFlow<Set<Int>>,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    private companion object {
-        const val TAG = "MeshStore"
+    companion object {
+        private const val TAG = "MeshStore"
+        private const val SNAPSHOT_DEBOUNCE_MS = 1_500L
 
-        /** Bounded so a chatty channel can't grow the snapshot without limit. */
-        const val MAX_MESSAGES = 500
-        const val SNAPSHOT_DEBOUNCE_MS = 1_500L
+        /** The snapshot's file name inside the app's private files directory. */
         const val FILE_NAME = "mesh-store.json"
     }
-
-    private val file = File(context.filesDir, FILE_NAME)
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -164,7 +166,9 @@ class MeshStore(
             } else {
                 node.copy(
                     position = node.position ?: existing.position,
-                    metrics = if (node.metrics == NodeMetrics()) existing.metrics else node.metrics,
+                    // NodeInfo carries device metrics only; merging keeps the
+                    // environment readings and lightning that arrived separately.
+                    metrics = node.metrics.mergedOver(existing.metrics),
                     lastHeardSeconds = maxOf(node.lastHeardSeconds, existing.lastHeardSeconds),
                     snr = if (node.snr != 0f) node.snr else existing.snr,
                     rssi = if (node.rssi != 0) node.rssi else existing.rssi,
@@ -216,19 +220,7 @@ class MeshStore(
             // Telemetry packets carry one variant at a time; keep the fields this
             // packet didn't mention.
             existing.copy(
-                metrics = NodeMetrics(
-                    batteryLevel = metrics.batteryLevel ?: existing.metrics.batteryLevel,
-                    voltage = metrics.voltage ?: existing.metrics.voltage,
-                    channelUtilization = metrics.channelUtilization
-                        ?: existing.metrics.channelUtilization,
-                    airUtilTx = metrics.airUtilTx ?: existing.metrics.airUtilTx,
-                    uptimeSeconds = metrics.uptimeSeconds ?: existing.metrics.uptimeSeconds,
-                    temperature = metrics.temperature ?: existing.metrics.temperature,
-                    relativeHumidity = metrics.relativeHumidity
-                        ?: existing.metrics.relativeHumidity,
-                    barometricPressure = metrics.barometricPressure
-                        ?: existing.metrics.barometricPressure,
-                ),
+                metrics = metrics.mergedOver(existing.metrics),
                 lastHeardSeconds = maxOf(existing.lastHeardSeconds, heardSeconds),
             )
         }
@@ -267,7 +259,7 @@ class MeshStore(
             if (message.id != 0 && current.any { it.id == message.id && !it.outgoing }) {
                 current
             } else {
-                (current + message).takeLast(MAX_MESSAGES)
+                trimHistory(current + message)
             }
         }
         if (!message.outgoing) inboundMessages.tryEmit(message)
@@ -284,6 +276,11 @@ class MeshStore(
                 }
             }
         }
+        requestSave()
+    }
+
+    fun deleteMessage(id: Int) {
+        _messages.update { current -> current.filterNot { it.id == id && it.outgoing } }
         requestSave()
     }
 
@@ -387,12 +384,18 @@ class MeshStore(
         return messages.count { !it.outgoing && it.timeMs > since }
     }
 
-    fun totalUnread(): Int {
-        val lastRead = _lastRead.value
-        return _messages.value
-            .filterNot { it.outgoing || it.isReaction }
-            .count { it.timeMs > (lastRead[it.conversation] ?: 0L) }
-    }
+    fun totalUnread(): Int = countUnread(_messages.value, _lastRead.value)
+
+    /**
+     * Unread total as a flow, for surfaces that must follow it both ways.
+     *
+     * Reading a conversation has to *lower* the count as promptly as a new message
+     * raises it. The ongoing notification used to refresh only on arrival, so its badge
+     * kept claiming unread messages long after they had been read — and the tile and
+     * complication would inherit the same staleness without this.
+     */
+    val unreadTotal: StateFlow<Int> = combine(_messages, _lastRead, ::countUnread)
+        .stateIn(scope, SharingStarted.Eagerly, 0)
 
     // ---------------------------------------------------------------- snapshot
 
@@ -407,8 +410,27 @@ class MeshStore(
         val lastRead: Map<String, Long> = emptyMap(),
     )
 
-    suspend fun load() = withContext(Dispatchers.IO) {
-        if (!file.exists()) return@withContext
+    /**
+     * Completes once the snapshot has been read (or found absent).
+     *
+     * A tile or complication can be the thing that starts the process, and it asks for
+     * data immediately. Answering before [load] finishes would render "0 unread" and an
+     * empty mesh for a moment even when neither is true.
+     */
+    private val loadedGate = CompletableDeferred<Unit>()
+
+    suspend fun awaitLoaded() = loadedGate.await()
+
+    suspend fun load() = withContext(ioDispatcher) {
+        try {
+            loadSnapshot()
+        } finally {
+            loadedGate.complete(Unit)
+        }
+    }
+
+    private fun loadSnapshot() {
+        if (!file.exists()) return
         runCatching {
             val snapshot = json.decodeFromString<Snapshot>(file.readText())
             _myNodeNum.value = snapshot.myNodeNum
@@ -419,12 +441,20 @@ class MeshStore(
             _waypoints.value = snapshot.waypoints
             _lastRead.value = snapshot.lastRead
         }.onFailure {
+            // Set aside rather than deleted. Starting fresh is the right move for the
+            // app, but if the cause is a decoding bug in a future version rather than a
+            // damaged file, deleting it would have destroyed the wearer's history for
+            // good. One copy is kept; a later failure replaces it.
             Log.w(TAG, "snapshot unreadable, starting fresh", it)
-            runCatching { file.delete() }
+            runCatching {
+                val aside = File(file.parentFile, "${file.name}.unreadable")
+                aside.delete()
+                if (!file.renameTo(aside)) file.delete()
+            }
         }
     }
 
-    private suspend fun persist() = withContext(Dispatchers.IO) {
+    private suspend fun persist() = withContext(ioDispatcher) {
         runCatching {
             val snapshot = Snapshot(
                 myNodeNum = _myNodeNum.value,
@@ -437,7 +467,7 @@ class MeshStore(
             )
             // Write-then-rename: a watch can be yanked off the charger mid-write and we
             // would rather keep the previous good snapshot than a truncated one.
-            val tmp = File(file.parentFile, "$FILE_NAME.tmp")
+            val tmp = File(file.parentFile, "${file.name}.tmp")
             tmp.writeText(json.encodeToString(snapshot))
             if (!tmp.renameTo(file)) {
                 file.writeText(tmp.readText())
@@ -446,7 +476,7 @@ class MeshStore(
         }.onFailure { Log.w(TAG, "failed to persist snapshot", it) }
     }
 
-    suspend fun wipe() = withContext(Dispatchers.IO) {
+    suspend fun wipe() = withContext(ioDispatcher) {
         _nodes.value = emptyMap()
         _messages.value = emptyList()
         _channels.value = emptyList()
@@ -457,4 +487,51 @@ class MeshStore(
         runCatching { file.delete() }
         Unit
     }
+}
+
+private fun countUnread(messages: List<ChatMessage>, lastRead: Map<String, Long>): Int =
+    messages.count { it.isUnread(lastRead) }
+
+/** Newest messages kept per conversation. */
+internal const val HISTORY_PER_CONVERSATION = 200
+
+/** Newest messages kept overall, across every conversation. */
+internal const val HISTORY_TOTAL = 1_000
+
+/**
+ * Bounds message history without letting one conversation crowd out the rest.
+ *
+ * This used to be a single cap of 500 across everything, oldest first — so on a busy
+ * public channel, a quiet direct conversation was evicted within a day or two simply
+ * because the channel kept talking. Now each conversation keeps its own newest
+ * [perConversation] messages, and only beyond [total] does the oldest overall go.
+ * Order is preserved; [messages] is in arrival order, oldest first.
+ */
+internal fun trimHistory(
+    messages: List<ChatMessage>,
+    perConversation: Int = HISTORY_PER_CONVERSATION,
+    total: Int = HISTORY_TOTAL,
+): List<ChatMessage> {
+    if (messages.size <= minOf(perConversation, total)) return messages
+
+    val excess = messages.groupingBy { it.conversation }.eachCount()
+        .mapValues { (_, count) -> count - perConversation }
+        .filterValues { it > 0 }
+        .toMutableMap()
+
+    val bounded = if (excess.isEmpty()) {
+        messages
+    } else {
+        // Walking oldest-first, skip each over-full conversation's oldest messages.
+        messages.filter { message ->
+            val skip = excess[message.conversation] ?: 0
+            if (skip > 0) {
+                excess[message.conversation] = skip - 1
+                false
+            } else {
+                true
+            }
+        }
+    }
+    return if (bounded.size > total) bounded.takeLast(total) else bounded
 }

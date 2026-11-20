@@ -47,6 +47,8 @@ interface PacketEvents {
 class PacketRouter(
     private val store: MeshStore,
     private val events: PacketEvents,
+    /** Injected so tests can pin "now"; the watch's own clock in production. */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
     private companion object {
         const val TAG = "PacketRouter"
@@ -111,7 +113,10 @@ class PacketRouter(
                 shortName = info.user.shortName,
                 hwModel = info.user.hwModel.name,
                 role = info.user.role.name,
-                lastHeardSeconds = info.lastHeard,
+                // On a radio that has never had a clock this is boot-relative seconds,
+                // not a date; zero ("unknown") lets the merge keep what we've observed.
+                lastHeardSeconds = MeshTime.plausibleEpochSeconds(info.lastHeard, clock())
+                    ?.toInt() ?: 0,
                 snr = info.snr,
                 hopsAway = if (info.hasHopsAway()) info.hopsAway else null,
                 channelIndex = info.channel,
@@ -218,7 +223,7 @@ class PacketRouter(
     /** Any traffic from a node updates its liveness, SNR and hop count. */
     private fun touchNode(packet: MeshProtos.MeshPacket) {
         if (packet.from == 0) return
-        val heard = if (packet.hasRxTime()) packet.rxTime else nowSeconds()
+        val heard = heardSeconds(packet)
         val hops = if (packet.hopStart > 0 && packet.hopLimit <= packet.hopStart) {
             packet.hopStart - packet.hopLimit
         } else {
@@ -254,11 +259,11 @@ class PacketRouter(
                 toNum = packet.to,
                 channel = packet.channel,
                 text = text,
-                timeMs = if (packet.hasRxTime()) {
-                    packet.rxTime * 1000L
-                } else {
-                    System.currentTimeMillis()
-                },
+                timeMs = heardMs(packet),
+                // When the *watch* learned of it, which is what unread is judged by: a
+                // message the radio held for us while we were away carries its true
+                // (earlier) arrival time, and would otherwise count as already read.
+                receivedAtMs = clock(),
                 outgoing = false,
                 status = MsgStatus.Received,
                 replyId = data.replyId,
@@ -275,11 +280,7 @@ class PacketRouter(
         runCatching {
             val position = MeshProtos.Position.parseFrom(data.payload)
             position.toModel()?.let {
-                store.applyPosition(
-                    packet.from,
-                    it,
-                    if (packet.hasRxTime()) packet.rxTime else nowSeconds(),
-                )
+                store.applyPosition(packet.from, it, heardSeconds(packet))
             }
         }.onFailure { Log.w(TAG, "bad position payload", it) }
     }
@@ -304,7 +305,7 @@ class PacketRouter(
     private fun handleTelemetry(packet: MeshProtos.MeshPacket, data: MeshProtos.Data) {
         runCatching {
             val telemetry = TelemetryProtos.Telemetry.parseFrom(data.payload)
-            val heard = if (packet.hasRxTime()) packet.rxTime else nowSeconds()
+            val heard = heardSeconds(packet)
             when (telemetry.variantCase) {
                 TelemetryProtos.Telemetry.VariantCase.DEVICE_METRICS ->
                     store.applyMetrics(packet.from, telemetry.deviceMetrics.toModel(), heard)
@@ -378,7 +379,7 @@ class PacketRouter(
                     back = discovery.routeBackList.mapIndexed { i, num ->
                         TraceHop(num, discovery.snrBackList.getOrNull(i)?.let { it / 4f })
                     },
-                    completedAtMs = System.currentTimeMillis(),
+                    completedAtMs = clock(),
                 ),
             )
         }.onFailure { Log.w(TAG, "bad traceroute payload", it) }
@@ -426,5 +427,17 @@ class PacketRouter(
         uptimeSeconds = if (hasUptimeSeconds()) uptimeSeconds else null,
     )
 
-    private fun nowSeconds(): Int = (System.currentTimeMillis() / 1000L).toInt()
+    private fun nowSeconds(): Int = (clock() / 1000L).toInt()
+
+    /**
+     * When the radio heard [packet], falling back to now when it couldn't say — no clock
+     * yet (`rx_time` absent), or a reading that can't be a real date.
+     */
+    private fun heardSeconds(packet: MeshProtos.MeshPacket): Int = (heardMs(packet) / 1000L).toInt()
+
+    private fun heardMs(packet: MeshProtos.MeshPacket): Long {
+        val now = clock()
+        if (!packet.hasRxTime()) return now
+        return MeshTime.plausibleEpochSeconds(packet.rxTime, now)?.times(1000L) ?: now
+    }
 }
