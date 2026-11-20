@@ -99,6 +99,12 @@ android {
         }
     }
 
+    testOptions {
+        // Lets the decode layer run under plain JVM tests: android.util.Log, which it
+        // calls on malformed input, returns quietly instead of throwing "not mocked".
+        unitTests.isReturnDefaultValues = true
+    }
+
     lint {
         // Wear-only app; the manifest legitimately has no phone launcher activity.
         disable += setOf("MissingApplicationIcon")

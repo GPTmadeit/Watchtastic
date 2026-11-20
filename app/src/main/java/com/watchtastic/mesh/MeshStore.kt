@@ -1,6 +1,5 @@
 package com.watchtastic.mesh
 
-import android.content.Context
 import android.util.Log
 import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.Conversation
@@ -13,6 +12,7 @@ import com.watchtastic.mesh.model.NodePosition
 import com.watchtastic.mesh.model.RadioInfo
 import com.watchtastic.mesh.model.Waypoint
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.FlowPreview
@@ -43,22 +43,21 @@ import java.io.File
  * populated node list even before the radio reconnects.
  */
 class MeshStore(
-    context: Context,
+    /** Where the snapshot lives. A plain file rather than a Context, so tests can run it. */
+    private val file: File,
     private val scope: CoroutineScope,
     /** Channels the wearer has silenced on this watch; see [com.watchtastic.platform.Prefs]. */
     private val mutedChannels: StateFlow<Set<Int>>,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
 ) {
 
-    private companion object {
-        const val TAG = "MeshStore"
+    companion object {
+        private const val TAG = "MeshStore"
+        private const val SNAPSHOT_DEBOUNCE_MS = 1_500L
 
-        /** Bounded so a chatty channel can't grow the snapshot without limit. */
-        const val MAX_MESSAGES = 500
-        const val SNAPSHOT_DEBOUNCE_MS = 1_500L
+        /** The snapshot's file name inside the app's private files directory. */
         const val FILE_NAME = "mesh-store.json"
     }
-
-    private val file = File(context.filesDir, FILE_NAME)
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
@@ -260,7 +259,7 @@ class MeshStore(
             if (message.id != 0 && current.any { it.id == message.id && !it.outgoing }) {
                 current
             } else {
-                (current + message).takeLast(MAX_MESSAGES)
+                trimHistory(current + message)
             }
         }
         if (!message.outgoing) inboundMessages.tryEmit(message)
@@ -277,6 +276,11 @@ class MeshStore(
                 }
             }
         }
+        requestSave()
+    }
+
+    fun deleteMessage(id: Int) {
+        _messages.update { current -> current.filterNot { it.id == id && it.outgoing } }
         requestSave()
     }
 
@@ -417,7 +421,7 @@ class MeshStore(
 
     suspend fun awaitLoaded() = loadedGate.await()
 
-    suspend fun load() = withContext(Dispatchers.IO) {
+    suspend fun load() = withContext(ioDispatcher) {
         try {
             loadSnapshot()
         } finally {
@@ -437,12 +441,20 @@ class MeshStore(
             _waypoints.value = snapshot.waypoints
             _lastRead.value = snapshot.lastRead
         }.onFailure {
+            // Set aside rather than deleted. Starting fresh is the right move for the
+            // app, but if the cause is a decoding bug in a future version rather than a
+            // damaged file, deleting it would have destroyed the wearer's history for
+            // good. One copy is kept; a later failure replaces it.
             Log.w(TAG, "snapshot unreadable, starting fresh", it)
-            runCatching { file.delete() }
+            runCatching {
+                val aside = File(file.parentFile, "${file.name}.unreadable")
+                aside.delete()
+                if (!file.renameTo(aside)) file.delete()
+            }
         }
     }
 
-    private suspend fun persist() = withContext(Dispatchers.IO) {
+    private suspend fun persist() = withContext(ioDispatcher) {
         runCatching {
             val snapshot = Snapshot(
                 myNodeNum = _myNodeNum.value,
@@ -455,7 +467,7 @@ class MeshStore(
             )
             // Write-then-rename: a watch can be yanked off the charger mid-write and we
             // would rather keep the previous good snapshot than a truncated one.
-            val tmp = File(file.parentFile, "$FILE_NAME.tmp")
+            val tmp = File(file.parentFile, "${file.name}.tmp")
             tmp.writeText(json.encodeToString(snapshot))
             if (!tmp.renameTo(file)) {
                 file.writeText(tmp.readText())
@@ -464,7 +476,7 @@ class MeshStore(
         }.onFailure { Log.w(TAG, "failed to persist snapshot", it) }
     }
 
-    suspend fun wipe() = withContext(Dispatchers.IO) {
+    suspend fun wipe() = withContext(ioDispatcher) {
         _nodes.value = emptyMap()
         _messages.value = emptyList()
         _channels.value = emptyList()
@@ -479,3 +491,47 @@ class MeshStore(
 
 private fun countUnread(messages: List<ChatMessage>, lastRead: Map<String, Long>): Int =
     messages.count { it.isUnread(lastRead) }
+
+/** Newest messages kept per conversation. */
+internal const val HISTORY_PER_CONVERSATION = 200
+
+/** Newest messages kept overall, across every conversation. */
+internal const val HISTORY_TOTAL = 1_000
+
+/**
+ * Bounds message history without letting one conversation crowd out the rest.
+ *
+ * This used to be a single cap of 500 across everything, oldest first — so on a busy
+ * public channel, a quiet direct conversation was evicted within a day or two simply
+ * because the channel kept talking. Now each conversation keeps its own newest
+ * [perConversation] messages, and only beyond [total] does the oldest overall go.
+ * Order is preserved; [messages] is in arrival order, oldest first.
+ */
+internal fun trimHistory(
+    messages: List<ChatMessage>,
+    perConversation: Int = HISTORY_PER_CONVERSATION,
+    total: Int = HISTORY_TOTAL,
+): List<ChatMessage> {
+    if (messages.size <= minOf(perConversation, total)) return messages
+
+    val excess = messages.groupingBy { it.conversation }.eachCount()
+        .mapValues { (_, count) -> count - perConversation }
+        .filterValues { it > 0 }
+        .toMutableMap()
+
+    val bounded = if (excess.isEmpty()) {
+        messages
+    } else {
+        // Walking oldest-first, skip each over-full conversation's oldest messages.
+        messages.filter { message ->
+            val skip = excess[message.conversation] ?: 0
+            if (skip > 0) {
+                excess[message.conversation] = skip - 1
+                false
+            } else {
+                true
+            }
+        }
+    }
+    return if (bounded.size > total) bounded.takeLast(total) else bounded
+}

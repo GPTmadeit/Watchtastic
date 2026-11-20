@@ -16,9 +16,10 @@ Things that are true of the app today, in rough order of how often they bite.
   [ARCHITECTURE.md](ARCHITECTURE.md).
 - **English only.** No translations, and no string extraction work has been done toward
   them.
-- **The BLE layer has no automated tests.** Unit tests cover pure logic — versions,
-  geometry, addressing, channel naming — but the transport is verified by running it
-  against real radios. Testing it properly needs a fake GATT server that doesn't exist yet.
+- **The BLE transport has no automated tests.** Everything above it is covered — packet
+  decoding runs real protobuf frames through the router and store — but `GattLink` and
+  `RadioSession` are verified against real radios. Testing them properly needs a fake GATT
+  server that doesn't exist yet.
 - **Battery cost is real.** Holding a Bluetooth connection so messages arrive with the
   screen off is not free. Settings → Disconnect exists for when you don't need it.
 - **Messages cap at 200 characters.** That's the LoRa payload limit, not an app choice.

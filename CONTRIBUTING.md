@@ -104,8 +104,13 @@ change solves. Look at `git log` for the house style.
 Pure logic — anything in `mesh/model`, `update/Version`, addressing helpers — should have
 unit tests. Look at `app/src/test/` for examples.
 
-Anything touching BLE or real radio behaviour can't be unit tested meaningfully, so say
-plainly in your PR what hardware you tested against. "Tested on a Pixel Watch 3 with a
+**Decoding is testable too.** `PacketRouterTest` feeds real `FromRadio` protobufs through
+the real `PacketRouter` into a real `MeshStore` (backed by a temp file), so a change to how
+packets become app state should come with a frame-level test there. Build the frame the way
+the firmware would send it, then assert on the store.
+
+The BLE transport itself still can't be unit tested meaningfully, so say plainly in your
+PR what hardware you tested against. "Tested on a Pixel Watch 3 with a
 RAK4631" is worth more than any amount of mocking here.
 
 ## Reporting bugs

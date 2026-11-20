@@ -56,11 +56,17 @@ class GattLink(
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
 
-    /** Emits the GATT status once the link drops for any reason. */
-    val disconnected = MutableSharedFlow<Int>(
-        extraBufferCapacity = 4,
-        onBufferOverflow = BufferOverflow.DROP_OLDEST,
-    )
+    /**
+     * Completes with the GATT status when the link drops, unless we closed it ourselves.
+     *
+     * A one-shot [CompletableDeferred] rather than a flow, because a drop is a once-per-
+     * link fact and must not depend on someone listening at the right moment. This used
+     * to be a `SharedFlow` with no replay, and the repository only subscribed once sync
+     * had finished — so a drop *during* sync went unheard (the sync then sat out its full
+     * 90-second timeout), and a drop in the gap between sync and subscribing would have
+     * left the app showing "Connected" on a dead link indefinitely.
+     */
+    val dropped = CompletableDeferred<Int>()
 
     @Volatile
     private var connectOp: CompletableDeferred<Unit>? = null
@@ -109,7 +115,7 @@ class GattLink(
                     readOp?.completeExceptionally(err)
                     writeOp?.completeExceptionally(err)
                     descriptorOp?.completeExceptionally(err)
-                    if (!closed) disconnected.tryEmit(status)
+                    if (!closed) dropped.complete(status)
                 }
             }
         }

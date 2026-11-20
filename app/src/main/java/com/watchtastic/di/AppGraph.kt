@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import java.io.File
 
 /**
  * Application-scoped object graph, assembled by hand.
@@ -33,7 +34,11 @@ class AppGraph private constructor(context: Context) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     val prefs = Prefs(appContext)
-    val store = MeshStore(appContext, scope, prefs.mutedChannels)
+    val store = MeshStore(
+        File(appContext.filesDir, MeshStore.FILE_NAME),
+        scope,
+        prefs.mutedChannels,
+    )
     val haptics = Haptics(appContext, prefs)
     val notifier = Notifier(appContext)
     val location = LocationProvider(appContext)

@@ -6,7 +6,9 @@ import android.content.Intent
 import android.util.Log
 import androidx.core.app.RemoteInput
 import com.watchtastic.di.AppGraph
+import com.watchtastic.mesh.model.LinkState
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Sends a reply typed or dictated straight into the notification.
@@ -19,6 +21,9 @@ class NotificationReplyReceiver : BroadcastReceiver() {
     companion object {
         const val ACTION_REPLY = "com.watchtastic.action.REPLY"
         private const val TAG = "NotificationReply"
+
+        /** Bounded: the broadcast is held open meanwhile, and the system won't wait long. */
+        private const val LOAD_WAIT_MS = 3_000L
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -39,9 +44,27 @@ class NotificationReplyReceiver : BroadcastReceiver() {
         val pending = goAsync()
         graph.scope.launch {
             try {
+                // Notifications outlive the process, so a reply can be what starts it.
+                // Sending before the snapshot loaded put the reply into an empty store,
+                // and the load then replaced the store wholesale — the reply vanished.
+                withTimeoutOrNull(LOAD_WAIT_MS) { graph.store.awaitLoaded() }
+
                 val result = graph.repository.sendText(conversation, text)
-                if (result.isSuccess) {
-                    graph.haptics.sent()
+                val receipt = result.getOrNull()
+                if (receipt != null) {
+                    if (receipt.queued) {
+                        // Accepted into the outbox: a lighter tick than "sent", so the
+                        // wrist can tell the two apart.
+                        graph.haptics.tick()
+                        // Nothing is trying to reach the radio in a cold process, so
+                        // nothing would ever flush the outbox. Start the link service,
+                        // which picks the saved radio back up.
+                        if (graph.repository.link.value == LinkState.Idle) {
+                            MeshService.start(context)
+                        }
+                    } else {
+                        graph.haptics.sent()
+                    }
                     // Replying is reading: clear the thread and drop the card.
                     graph.store.markRead(conversation)
                     graph.notifier.clearConversation(conversation)

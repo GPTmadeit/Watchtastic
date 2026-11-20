@@ -39,6 +39,7 @@ import androidx.wear.compose.material3.MaterialTheme
 import androidx.wear.compose.material3.ScreenScaffold
 import androidx.wear.compose.material3.Text
 import com.watchtastic.mesh.MeshConstants
+import com.watchtastic.mesh.SendReceipt
 import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.ConversationKey
 import com.watchtastic.mesh.model.MsgStatus
@@ -75,6 +76,7 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
     val myNodeNum by graph.store.myNodeNum.collectAsStateWithLifecycle()
     val radioInfo by graph.store.radioInfo.collectAsStateWithLifecycle()
     val canned by graph.prefs.cannedMessages.collectAsStateWithLifecycle()
+    val link by graph.repository.link.collectAsStateWithLifecycle()
 
     val conversationMessages = remember(allMessages, key) {
         allMessages.filter { it.conversation == key }
@@ -109,11 +111,17 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
 
     val channelIndex = remember(key) { ConversationKey.channelIndex(key) ?: 0 }
 
-    val send: (String) -> Unit = { text ->
-        scope.launch {
-            val result = graph.repository.sendText(key, text)
-            if (result.isSuccess) graph.haptics.sent() else graph.haptics.failed()
+    // Three distinct feels: sent, queued for the radio (a lighter tick), or failed.
+    val feel: (Result<SendReceipt>) -> Unit = { result ->
+        val receipt = result.getOrNull()
+        when {
+            receipt == null -> graph.haptics.failed()
+            receipt.queued -> graph.haptics.tick()
+            else -> graph.haptics.sent()
         }
+    }
+    val send: (String) -> Unit = { text ->
+        scope.launch { feel(graph.repository.sendText(key, text)) }
     }
     val launchInput = rememberTextInput(onResult = send)
 
@@ -166,6 +174,17 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
                     senderNode = nodes[message.fromNum],
                     showSender = !message.outgoing && ConversationKey.isChannel(key),
                     reactions = reactions[message.id].orEmpty().map { it.text },
+                    waitingForRadio = message.outgoing &&
+                        message.status == MsgStatus.Queued && !link.isUsable,
+                    onClick = {
+                        if (message.outgoing && message.status == MsgStatus.Failed) {
+                            graph.haptics.select()
+                            scope.launch { feel(graph.repository.resend(message.id)) }
+                        } else {
+                            graph.haptics.heavy()
+                            reactTarget = message
+                        }
+                    },
                     onLongClick = {
                         graph.haptics.heavy()
                         reactTarget = message
@@ -325,8 +344,7 @@ fun ChatScreen(conversationKey: String, onOpenNode: (Int) -> Unit) {
                             val message = target ?: return@Button
                             reactTarget = null
                             scope.launch {
-                                graph.repository.sendReaction(key, message.id, emoji)
-                                graph.haptics.sent()
+                                feel(graph.repository.sendReaction(key, message.id, emoji))
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -348,9 +366,13 @@ private fun MessageBubble(
     senderNode: com.watchtastic.mesh.model.MeshNode?,
     showSender: Boolean,
     reactions: List<String>,
+    /** Queued in the outbox while the radio is out of reach. */
+    waitingForRadio: Boolean,
+    onClick: () -> Unit,
     onLongClick: () -> Unit,
     onSenderClick: () -> Unit,
 ) {
+    val canResend = message.outgoing && message.status == MsgStatus.Failed
     // Outgoing messages sit in the brand green container, incoming in neutral surface —
     // so who said what is legible before a single word is read.
     val colors = if (message.outgoing) {
@@ -363,7 +385,8 @@ private fun MessageBubble(
     }
 
     Card(
-        onClick = onLongClick,
+        // A failed message's tap resends it; everywhere else a tap reacts, as before.
+        onClick = onClick,
         onLongClick = onLongClick,
         onLongClickLabel = "React",
         colors = colors,
@@ -424,6 +447,24 @@ private fun MessageBubble(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.error,
                 maxLines = 1,
+            )
+        }
+        if (canResend) {
+            Text(
+                text = "Tap to resend",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        if (waitingForRadio) {
+            // Says what will happen, not just that something is pending: the outbox
+            // sends this by itself once the radio is back.
+            Text(
+                text = "Sends when radio reconnects",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
             )
         }
     }

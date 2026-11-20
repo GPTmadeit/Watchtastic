@@ -144,6 +144,11 @@ instead:
 
 You can also reply **directly from the notification** without opening the app at all.
 
+**Out of range? Send anyway.** If the radio isn't reachable, the message waits in an
+outbox — marked *Sends when radio reconnects* — and goes out by itself as soon as the link
+is back. Anything still waiting after 30 minutes is marked as not sent rather than
+delivered late. Any message that fails can be **tapped to resend**.
+
 ### At a glance
 
 - **Tile** — long-press the watch face, add the **Mesh** tile. It shows whether the radio
@@ -209,7 +214,8 @@ separate screen, since each change reboots the radio.
 | **Channel shows the wrong name** | Fixed in 1.4.0. The primary channel takes its name from your modem preset. |
 | **Messages don't reach my MQTT logger** | Fixed in 1.4.0. Check **Settings → Allow MQTT relay** is on. |
 | **Messages don't pop up** | Watch **Settings → Apps → Watchtastic → Notifications** and make sure the *Messages* channel isn't silenced. |
-| **Keeps reconnecting** | Normal at the edge of range — it backs off and retries. Check the radio's battery. |
+| **Keeps reconnecting** | Normal at the edge of range — it backs off and retries. Check the radio's battery. Anything you send meanwhile waits in the outbox. |
+| **Message says "Radio out of reach"** | It waited 30 minutes for the radio without the link coming back. Tap it to try again. |
 | **Map says "No position"** | Neither the watch nor the radio has a fix yet. Enable **Share watch GPS**, or wait for the radio's GPS. |
 
 Still stuck? [Open an issue](https://github.com/GPTmadeit/Watchtastic/issues/new?template=bug_report.yml)
@@ -299,7 +305,7 @@ individually verified.
 ```bash
 git clone https://github.com/GPTmadeit/Watchtastic.git
 cd Watchtastic
-./gradlew testDebugUnitTest     # 48 unit tests, no device needed
+./gradlew testDebugUnitTest     # 81 unit tests, no device needed
 ./gradlew assembleDebug
 ```
 

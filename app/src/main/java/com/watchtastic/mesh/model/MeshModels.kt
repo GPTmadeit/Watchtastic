@@ -262,14 +262,29 @@ data class ChatMessage(
     val hopsAway: Int? = null,
     val pkiEncrypted: Boolean = false,
     val failureReason: String? = null,
+    /**
+     * Watch-clock time this message reached the watch; 0 for outgoing messages and for
+     * history persisted before this field existed.
+     *
+     * Distinct from [timeMs], which is when the *radio* heard it. The two differ by
+     * however long the radio held the message while the watch was out of reach.
+     */
+    val receivedAtMs: Long = 0L,
 ) {
     /**
      * The one definition of "unread": something we received — not a tapback — that
-     * arrived after its conversation was last opened. Every unread count in the app
-     * (home screen, ongoing chip, tile, complication) goes through this.
+     * reached the watch after its conversation was last opened. Every unread count in
+     * the app (home screen, ongoing chip, tile, complication) goes through this.
+     *
+     * Judged by arrival at the watch, not at the radio: [lastRead] is watch time too,
+     * and a message held by the radio during a disconnection is older than the last
+     * look at the thread, yet nobody has seen it.
      */
-    fun isUnread(lastRead: Map<String, Long>): Boolean =
-        !outgoing && !isReaction && timeMs > (lastRead[conversation] ?: 0L)
+    fun isUnread(lastRead: Map<String, Long>): Boolean {
+        if (outgoing || isReaction) return false
+        val arrivedAt = if (receivedAtMs > 0L) receivedAtMs else timeMs
+        return arrivedAt > (lastRead[conversation] ?: 0L)
+    }
 }
 
 /**
