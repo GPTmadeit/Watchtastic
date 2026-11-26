@@ -39,9 +39,6 @@ class MeshService : LifecycleService() {
         /** At most one new-node alert a minute; the rest are noticed in the node list. */
         private const val NEW_NODE_ALERT_INTERVAL_MS = 60_000L
 
-        /** At most one message buzz every few seconds; extra messages arrive silently. */
-        private const val MESSAGE_ALERT_INTERVAL_MS = 5_000L
-
         /** Bounds [announcedNodes], which would otherwise grow with every sender seen. */
         private const val MAX_ANNOUNCED = 2_000
 
@@ -84,7 +81,7 @@ class MeshService : LifecycleService() {
     private val announcedNodes = mutableSetOf<Int>()
 
     private val newNodeThrottle = AlertThrottle(NEW_NODE_ALERT_INTERVAL_MS)
-    private val messageThrottle = AlertThrottle(MESSAGE_ALERT_INTERVAL_MS)
+    private val messagePolicy = MessageAlertPolicy()
 
     override fun onCreate() {
         super.onCreate()
@@ -191,13 +188,17 @@ class MeshService : LifecycleService() {
                 // raise a heads-up card, and playing our own on top would buzz twice for
                 // one message. New-node alerts keep their haptic because that channel is
                 // deliberately silent.
-                // Over the limit the message is still posted, just without the buzz, so a
-                // flood from rotating sender numbers can't vibrate the watch nonstop.
+                // Who sent it decides how loudly it may announce itself. Dropped and
+                // silent messages are still in their conversation, unread.
+                val trust = SenderTrust.of(message, nodes[message.fromNum])
+                val decision = messagePolicy.decide(trust, graph.prefs.alertKnownOnly.value)
+                if (decision == AlertDecision.Drop) return@collect
+
                 graph.notifier.postMessage(
                     message,
                     sender,
                     conversationTitle,
-                    alert = messageThrottle.tryAcquire(),
+                    alert = decision == AlertDecision.Buzz,
                 )
             }
         }

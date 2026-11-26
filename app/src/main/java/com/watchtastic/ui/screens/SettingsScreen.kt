@@ -51,6 +51,7 @@ fun SettingsScreen(
     val shareLocation by graph.prefs.shareLocation.collectAsStateWithLifecycle()
     val haptics by graph.prefs.haptics.collectAsStateWithLifecycle()
     val notifyChannels by graph.prefs.notifyChannels.collectAsStateWithLifecycle()
+    val alertKnownOnly by graph.prefs.alertKnownOnly.collectAsStateWithLifecycle()
     val notifyNewNodes by graph.prefs.notifyNewNodes.collectAsStateWithLifecycle()
     val imperial by graph.prefs.imperialUnits.collectAsStateWithLifecycle()
     val okToMqtt by graph.prefs.okToMqtt.collectAsStateWithLifecycle()
@@ -245,6 +246,23 @@ fun SettingsScreen(
                     label = { Text("Channel messages", maxLines = 1) },
                     secondaryLabel = {
                         Text(if (notifyChannels) "Notify for all" else "Direct only", maxLines = 1)
+                    },
+                )
+            }
+            item {
+                SwitchButton(
+                    checked = alertKnownOnly,
+                    onCheckedChange = {
+                        graph.haptics.tick()
+                        graph.prefs.setAlertKnownOnly(it)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("Buzz for known only", maxLines = 1) },
+                    secondaryLabel = {
+                        Text(
+                            if (alertKnownOnly) "Favourites and verified DMs" else "Buzz for everyone",
+                            maxLines = 1,
+                        )
                     },
                 )
             }
