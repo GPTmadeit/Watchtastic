@@ -190,9 +190,11 @@ class PacketRouter(
 
     private fun handlePacket(packet: MeshProtos.MeshPacket) {
         // An `encrypted` payload means the radio had no key for that channel; there is
-        // nothing useful we can do with it, but the sender is still worth remembering.
+        // nothing useful we can do with it. We still refresh a node we already know, but
+        // never create one: the sender is unauthenticated, and one stranger cycling
+        // through `from` values would otherwise fill the node table.
         if (!packet.hasDecoded()) {
-            if (packet.from != 0) touchNode(packet)
+            if (packet.from != 0 && packet.from in store.nodes.value) touchNode(packet)
             return
         }
         val data = packet.decoded

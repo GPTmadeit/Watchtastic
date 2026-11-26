@@ -115,6 +115,29 @@ class PacketRouterTest {
             TelemetryProtos.Telemetry.newBuilder().apply(build).build().toByteString(),
         )
 
+    // ------------------------------------------------------------ undecryptable
+
+    private fun encryptedFrom(from: Int) = FromRadio.newBuilder().setPacket(
+        MeshPacket.newBuilder()
+            .setFrom(from).setTo(MeshConstants.BROADCAST_ADDR).setId(nextId++)
+            .setEncrypted(ByteString.copyFromUtf8("opaque")),
+    ).build()
+
+    @Test
+    fun `an undecryptable packet does not create a node`() = runTest {
+        val (store, router) = connected()
+        router.handle(encryptedFrom(alice))
+        assertFalse(alice in store.nodes.value)
+    }
+
+    @Test
+    fun `an undecryptable packet still refreshes a node we already know`() = runTest {
+        val (store, router) = connected()
+        router.handle(text(alice, MeshConstants.BROADCAST_ADDR, "hi"))
+        router.handle(encryptedFrom(alice))
+        assertTrue(alice in store.nodes.value)
+    }
+
     // --------------------------------------------------------------------- admin
 
     private fun adminReply(from: Int, to: Int) = packet(
