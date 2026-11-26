@@ -51,15 +51,18 @@ fun WatchtasticNav(
     // same target twice would be a no-op, because the value wouldn't have changed.
     LaunchedEffect(deepLinkRoute) {
         if (deepLinkRoute != null && savedRadio != null) {
+            // Null means the extra wasn't something we'd open; it is dropped.
             val target = Routes.forDeepLink(deepLinkRoute)
-            navController.navigate(target) {
-                launchSingleTop = true
-                // A tile tap means "show me this screen", not "stack it on whatever was
-                // open last" — otherwise Open-from-tile while in a chat would leave a
-                // second Home on top, and back would wander. Conversations keep their
-                // existing behaviour: a notification opens the thread over the
-                // current screen.
-                if (Routes.isTopLevel(target)) popUpTo(Routes.HOME)
+            if (target != null) {
+                navController.navigate(target) {
+                    launchSingleTop = true
+                    // A tile tap means "show me this screen", not "stack it on whatever
+                    // was open last" — otherwise Open-from-tile while in a chat would
+                    // leave a second Home on top, and back would wander. Conversations
+                    // keep their existing behaviour: a notification opens the thread
+                    // over the current screen.
+                    if (Routes.isTopLevel(target)) popUpTo(Routes.HOME)
+                }
             }
             onDeepLinkHandled()
         }

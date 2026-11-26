@@ -4,6 +4,7 @@ import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.MeshNode
 import com.watchtastic.mesh.model.MsgStatus
 import com.watchtastic.mesh.model.NodeMetrics
+import com.watchtastic.mesh.model.Waypoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -165,5 +166,97 @@ class MeshStoreTest {
         store.deleteMessage(1)
         store.deleteMessage(2) // inbound: not ours to delete this way
         assertEquals(listOf(2), store.messages.value.map { it.id })
+    }
+
+    // --------------------------------------------------------------- waypoints
+
+    private fun waypoint(id: Int, by: Int, lat: Double = 1.0, lockedTo: Int = 0) = Waypoint(
+        id = id,
+        name = "camp",
+        description = "",
+        latitude = lat,
+        longitude = 2.0,
+        lockedTo = lockedTo,
+        createdByNum = by,
+    )
+
+    @Test
+    fun `the creator can move its own waypoint`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        assertTrue(store.upsertWaypoint(waypoint(1, by = 7)))
+        assertTrue(store.upsertWaypoint(waypoint(1, by = 7, lat = 5.0)))
+        assertEquals(5.0, store.waypoints.value.single().latitude, 0.0)
+    }
+
+    @Test
+    fun `another node cannot move someone else's waypoint`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        store.upsertWaypoint(waypoint(1, by = 7))
+        assertFalse(store.upsertWaypoint(waypoint(1, by = 8, lat = 99.0)))
+        assertEquals(1.0, store.waypoints.value.single().latitude, 0.0)
+        assertEquals(7, store.waypoints.value.single().createdByNum)
+    }
+
+    @Test
+    fun `a waypoint cannot be locked to a different node`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        assertFalse(store.upsertWaypoint(waypoint(1, by = 8, lockedTo = 7)))
+        assertTrue(store.waypoints.value.isEmpty())
+    }
+
+    // ------------------------------------------------------------------ bounds
+
+    private fun node(num: Int, heard: Int = 0, favorite: Boolean = false) = MeshNode(
+        num = num,
+        userId = "!%08x".format(num),
+        longName = "n$num",
+        shortName = "n",
+        lastHeardSeconds = heard,
+        isFavorite = favorite,
+    )
+
+    @Test
+    fun `the node table is bounded, dropping the longest silent first`() {
+        val nodes = (1..10).associateWith { node(it, heard = it) }
+        val kept = trimNodes(nodes, self = 0, max = 4)
+        assertEquals(setOf(7, 8, 9, 10), kept.keys)
+    }
+
+    @Test
+    fun `our own radio and favourites are never evicted`() {
+        val nodes = (1..10).associateWith { node(it, heard = it, favorite = it == 2) }
+        val kept = trimNodes(nodes, self = 1, max = 4)
+        assertTrue(1 in kept && 2 in kept)
+        assertEquals(4, kept.size)
+    }
+
+    @Test
+    fun `a flood of new nodes through the store stays within the cap`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        repeat(MAX_NODES + 50) { store.mutateNode(1000 + it) { n -> n.copy(lastHeardSeconds = it + 1) } }
+        assertEquals(MAX_NODES, store.nodes.value.size)
+    }
+
+    private fun wp(id: Int, by: Int = 7, expire: Int = 0) = Waypoint(
+        id = id, name = "w", description = "", latitude = 1.0, longitude = 1.0,
+        expireSeconds = expire, createdByNum = by,
+    )
+
+    @Test
+    fun `expired waypoints are dropped and permanent ones kept`() {
+        val kept = pruneWaypoints(
+            listOf(wp(1, expire = 100), wp(2, expire = 5_000), wp(3)),
+            nowSeconds = 1_000, self = 0,
+        )
+        assertEquals(listOf(2, 3), kept.map { it.id })
+    }
+
+    @Test
+    fun `waypoint cap evicts other people's oldest before our own`() {
+        val list = listOf(wp(1, by = 5), wp(2, by = 9), wp(3, by = 5), wp(4, by = 9))
+        val kept = pruneWaypoints(list, nowSeconds = 0, self = 9, max = 3)
+        assertEquals(listOf(2, 3, 4), kept.map { it.id })
+        val ownOnly = pruneWaypoints(list.map { it.copy(createdByNum = 9) }, 0, self = 9, max = 3)
+        assertEquals(listOf(2, 3, 4), ownOnly.map { it.id })
     }
 }

@@ -183,7 +183,13 @@ class Notifier(private val context: Context) {
      * who is talking. Crucially there is no `setSilent` here — a silent notification is
      * filed away instead of interrupting, which is what stopped these popping up before.
      */
-    fun postMessage(message: ChatMessage, senderName: String, conversationTitle: String) {
+    fun postMessage(
+        message: ChatMessage,
+        senderName: String,
+        conversationTitle: String,
+        /** False posts the card without the heads-up buzz; see [AlertThrottle]. */
+        alert: Boolean = true,
+    ) {
         if (!canPost) return
 
         val sender = Person.Builder()
@@ -212,6 +218,8 @@ class Notifier(private val context: Context) {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             // Wear reads this to decide the card can expand over the current screen.
             .setDefaults(NotificationCompat.DEFAULT_VIBRATE)
+            // Overrides the channel's vibration for this one card.
+            .setSilent(!alert)
             .setContentIntent(openAppIntent(message.conversation))
             .addAction(replyAction(message.conversation))
             .build()

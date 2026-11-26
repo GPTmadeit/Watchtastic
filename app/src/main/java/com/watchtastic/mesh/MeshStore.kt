@@ -49,6 +49,8 @@ class MeshStore(
     /** Channels the wearer has silenced on this watch; see [com.watchtastic.platform.Prefs]. */
     private val mutedChannels: StateFlow<Set<Int>>,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.IO,
+    /** Injected so tests can pin "now"; used to expire waypoints. */
+    private val clock: () -> Long = System::currentTimeMillis,
 ) {
 
     companion object {
@@ -180,7 +182,7 @@ class MeshStore(
                     },
                 )
             }
-            current + (node.num to merged)
+            trimNodes(current + (node.num to merged), _myNodeNum.value)
         }
         requestSave()
     }
@@ -198,7 +200,7 @@ class MeshStore(
             )
             val updated = block(base)
             if (existing == null) created = updated
-            current + (num to updated)
+            trimNodes(current + (num to updated), _myNodeNum.value)
         }
         // A node can announce itself by any packet, not just NodeInfo, so discovery is
         // reported from here too.
@@ -294,11 +296,36 @@ class MeshStore(
         requestSave()
     }
 
-    fun upsertWaypoint(waypoint: Waypoint) {
+    /**
+     * Adds or updates a waypoint. Returns false when the update was refused.
+     *
+     * Waypoint ids travel in the clear, so anyone on the channel can re-broadcast an
+     * existing id with new coordinates. Without a check that quietly moves a rendezvous
+     * point, and the compass then walks the wearer to wherever the sender chose. Only the
+     * node that created a waypoint may change it, and nobody may claim a lock on behalf
+     * of another node.
+     */
+    fun upsertWaypoint(waypoint: Waypoint): Boolean {
+        if (waypoint.lockedTo != 0 && waypoint.lockedTo != waypoint.createdByNum) return false
+        var accepted = true
         _waypoints.update { current ->
-            current.filterNot { it.id == waypoint.id } + waypoint
+            val existing = current.firstOrNull { it.id == waypoint.id }
+            if (existing != null &&
+                existing.createdByNum != 0 &&
+                existing.createdByNum != waypoint.createdByNum
+            ) {
+                accepted = false
+                current
+            } else {
+                pruneWaypoints(
+                    current.filterNot { it.id == waypoint.id } + waypoint,
+                    nowSeconds = (clock() / 1000L).toInt(),
+                    self = _myNodeNum.value,
+                )
+            }
         }
-        requestSave()
+        if (accepted) requestSave()
+        return accepted
     }
 
     fun deleteWaypoint(id: Int) {
@@ -438,7 +465,11 @@ class MeshStore(
             _channels.value = snapshot.channels
             _messages.value = snapshot.messages
             _radioInfo.value = snapshot.radioInfo
-            _waypoints.value = snapshot.waypoints
+            _waypoints.value = pruneWaypoints(
+                snapshot.waypoints,
+                nowSeconds = (clock() / 1000L).toInt(),
+                self = snapshot.myNodeNum,
+            )
             _lastRead.value = snapshot.lastRead
         }.onFailure {
             // Set aside rather than deleted. Starting fresh is the right move for the
@@ -534,4 +565,55 @@ internal fun trimHistory(
         }
     }
     return if (bounded.size > total) bounded.takeLast(total) else bounded
+}
+
+/** Most nodes kept. A busy mesh is a few hundred; beyond this the oldest-heard go. */
+internal const val MAX_NODES = 500
+
+/** Most waypoints kept. */
+internal const val MAX_WAYPOINTS = 50
+
+/**
+ * Bounds the node table so traffic from the mesh can't grow it — and the JSON snapshot
+ * rewritten after every change — without limit.
+ *
+ * Every packet from a new `from` value creates a node, and that value is not
+ * authenticated, so a single sender can mint thousands. Our own radio and favourites
+ * are never evicted; of the rest, the least recently heard go first.
+ */
+internal fun trimNodes(
+    nodes: Map<Int, MeshNode>,
+    self: Int,
+    max: Int = MAX_NODES,
+): Map<Int, MeshNode> {
+    if (nodes.size <= max) return nodes
+    val evictable = nodes.values
+        .filter { it.num != self && !it.isFavorite }
+        .sortedBy { it.lastHeardSeconds }
+    val drop = (nodes.size - max).coerceAtMost(evictable.size)
+    val dropped = evictable.take(drop).mapTo(HashSet()) { it.num }
+    return nodes.filterKeys { it !in dropped }
+}
+
+/**
+ * Drops expired waypoints and bounds the rest.
+ *
+ * `expire` is an epoch time in seconds, zero meaning "never"; it was previously stored
+ * and ignored, so a waypoint outlived its own expiry forever. Over the cap the oldest
+ * go first, but the wearer's own waypoints are kept ahead of anyone else's so a flood
+ * of someone else's cannot push them out. [waypoints] is in arrival order.
+ */
+internal fun pruneWaypoints(
+    waypoints: List<Waypoint>,
+    nowSeconds: Int,
+    self: Int,
+    max: Int = MAX_WAYPOINTS,
+): List<Waypoint> {
+    val live = waypoints.filter { it.expireSeconds == 0 || it.expireSeconds > nowSeconds }
+    if (live.size <= max) return live
+    val excess = live.size - max
+    val victims = live.filter { it.createdByNum != self }.take(excess).mapTo(HashSet()) { it.id }
+    val remaining = excess - victims.size
+    val trimmed = live.filter { it.id !in victims }
+    return if (remaining > 0) trimmed.drop(remaining) else trimmed
 }

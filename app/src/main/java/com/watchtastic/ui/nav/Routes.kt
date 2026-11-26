@@ -1,6 +1,8 @@
 package com.watchtastic.ui.nav
 
 import android.net.Uri
+import com.watchtastic.mesh.MeshConstants
+import com.watchtastic.mesh.model.ConversationKey
 
 /**
  * Every destination in the app.
@@ -46,12 +48,26 @@ object Routes {
     private val DEEP_LINKABLE = setOf(CONVERSATIONS, NODES, HOME)
 
     /**
-     * Resolves a deep-link extra. Anything that isn't a known top-level screen is a
-     * conversation key, which is what notifications have always sent — conversation keys
-     * carry a `ch:`/`dm:` prefix, so the two can never collide.
+     * Resolves a deep-link extra, or null if it names nothing we would open.
+     *
+     * Anything that isn't a known top-level screen must be a well-formed conversation
+     * key (`ch:<slot>` or `dm:<node>`), which is what notifications have always sent.
+     * `MainActivity` is exported, so any app on the watch can supply this string; it is
+     * validated rather than handed to the chat route as-is.
      */
-    fun forDeepLink(value: String): String =
-        if (value in DEEP_LINKABLE) value else chat(value)
+    fun forDeepLink(value: String): String? = when {
+        value in DEEP_LINKABLE -> value
+        isConversationKey(value) -> chat(value)
+        else -> null
+    }
+
+    private fun isConversationKey(value: String): Boolean = when {
+        ConversationKey.isChannel(value) ->
+            ConversationKey.channelIndex(value)?.let { it in 0 until MeshConstants.NUM_CHANNELS } == true
+
+        value.startsWith("dm:") -> ConversationKey.nodeNum(value) != null
+        else -> false
+    }
 
     fun isTopLevel(route: String): Boolean = route in DEEP_LINKABLE
 }

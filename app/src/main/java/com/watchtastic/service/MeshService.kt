@@ -36,6 +36,12 @@ class MeshService : LifecycleService() {
         private const val ACTION_START = "com.watchtastic.action.START"
         private const val ACTION_STOP = "com.watchtastic.action.STOP"
 
+        /** At most one new-node alert a minute; the rest are noticed in the node list. */
+        private const val NEW_NODE_ALERT_INTERVAL_MS = 60_000L
+
+        /** Bounds [announcedNodes], which would otherwise grow with every sender seen. */
+        private const val MAX_ANNOUNCED = 2_000
+
         /**
          * Android 14 refuses to start a `connectedDevice` foreground service unless the
          * app *currently holds* one of the underlying transport permissions — declaring
@@ -73,6 +79,9 @@ class MeshService : LifecycleService() {
 
     /** Node numbers already announced, so a node is only ever new once per run. */
     private val announcedNodes = mutableSetOf<Int>()
+
+    private val newNodeThrottle = AlertThrottle(NEW_NODE_ALERT_INTERVAL_MS)
+    private val messagePolicy = MessageAlertPolicy()
 
     override fun onCreate() {
         super.onCreate()
@@ -179,7 +188,18 @@ class MeshService : LifecycleService() {
                 // raise a heads-up card, and playing our own on top would buzz twice for
                 // one message. New-node alerts keep their haptic because that channel is
                 // deliberately silent.
-                graph.notifier.postMessage(message, sender, conversationTitle)
+                // Who sent it decides how loudly it may announce itself. Dropped and
+                // silent messages are still in their conversation, unread.
+                val trust = SenderTrust.of(message, nodes[message.fromNum])
+                val decision = messagePolicy.decide(trust, graph.prefs.alertKnownOnly.value)
+                if (decision == AlertDecision.Drop) return@collect
+
+                graph.notifier.postMessage(
+                    message,
+                    sender,
+                    conversationTitle,
+                    alert = decision == AlertDecision.Buzz,
+                )
             }
         }
     }
@@ -211,8 +231,10 @@ class MeshService : LifecycleService() {
             graph.store.discoveredNodes.collect { node ->
                 if (!graph.prefs.notifyNewNodes.value) return@collect
                 if (graph.repository.link.value !is LinkState.Connected) return@collect
+                if (announcedNodes.size >= MAX_ANNOUNCED) announcedNodes.clear()
                 if (!announcedNodes.add(node.num)) return@collect
                 if (node.isIgnored) return@collect
+                if (!newNodeThrottle.tryAcquire()) return@collect
 
                 val detail = buildList {
                     node.hopsAway?.let {

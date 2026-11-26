@@ -190,9 +190,11 @@ class PacketRouter(
 
     private fun handlePacket(packet: MeshProtos.MeshPacket) {
         // An `encrypted` payload means the radio had no key for that channel; there is
-        // nothing useful we can do with it, but the sender is still worth remembering.
+        // nothing useful we can do with it. We still refresh a node we already know, but
+        // never create one: the sender is unauthenticated, and one stranger cycling
+        // through `from` values would otherwise fill the node table.
         if (!packet.hasDecoded()) {
-            if (packet.from != 0) touchNode(packet)
+            if (packet.from != 0 && packet.from in store.nodes.value) touchNode(packet)
             return
         }
         val data = packet.decoded
@@ -206,9 +208,7 @@ class PacketRouter(
             Portnums.PortNum.ROUTING_APP -> handleRouting(data)
             Portnums.PortNum.TRACEROUTE_APP -> handleTraceRoute(packet, data)
             Portnums.PortNum.WAYPOINT_APP -> handleWaypoint(packet, data)
-            Portnums.PortNum.ADMIN_APP -> runCatching {
-                events.onAdminReply(AdminProtos.AdminMessage.parseFrom(data.payload))
-            }.onFailure { Log.w(TAG, "bad admin reply", it) }
+            Portnums.PortNum.ADMIN_APP -> handleAdmin(packet, data)
 
             // These all present as text to the wearer, just from a different module.
             Portnums.PortNum.ALERT_APP,
@@ -357,6 +357,25 @@ class PacketRouter(
                 else -> Unit
             }
         }.onFailure { Log.w(TAG, "bad telemetry payload", it) }
+    }
+
+    /**
+     * Admin replies are only believed when they come from our own radio.
+     *
+     * Anyone on the mesh can address an ADMIN_APP packet to us, and a forged
+     * `get_config_response` would otherwise overwrite the config we keep in memory —
+     * which later config edits are built from and written back to the radio with
+     * `set_config`. Our own radio is the only sender whose answer means anything.
+     */
+    private fun handleAdmin(packet: MeshProtos.MeshPacket, data: MeshProtos.Data) {
+        val self = store.myNodeNum.value
+        if (self == 0 || packet.from != self) {
+            Log.w(TAG, "ignoring admin packet from !%08x".format(packet.from))
+            return
+        }
+        runCatching {
+            events.onAdminReply(AdminProtos.AdminMessage.parseFrom(data.payload))
+        }.onFailure { Log.w(TAG, "bad admin reply", it) }
     }
 
     private fun handleRouting(data: MeshProtos.Data) {

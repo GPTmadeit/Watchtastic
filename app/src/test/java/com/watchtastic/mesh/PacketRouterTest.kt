@@ -48,7 +48,10 @@ class PacketRouterTest {
             receipts += requestId to error
         }
         override fun onTraceRoute(result: TraceRoute) = Unit
-        override fun onAdminReply(message: AdminProtos.AdminMessage) = Unit
+        val adminReplies = mutableListOf<AdminProtos.AdminMessage>()
+        override fun onAdminReply(message: AdminProtos.AdminMessage) {
+            adminReplies += message
+        }
         override fun onClientNotification(text: String) = Unit
         override fun onRadioRebooted() = Unit
         override fun onConfigComplete(nonce: Int) {
@@ -111,6 +114,66 @@ class PacketRouterTest {
             from, MeshConstants.BROADCAST_ADDR, PortNum.TELEMETRY_APP,
             TelemetryProtos.Telemetry.newBuilder().apply(build).build().toByteString(),
         )
+
+    // ------------------------------------------------------------ undecryptable
+
+    private fun encryptedFrom(from: Int) = FromRadio.newBuilder().setPacket(
+        MeshPacket.newBuilder()
+            .setFrom(from).setTo(MeshConstants.BROADCAST_ADDR).setId(nextId++)
+            .setEncrypted(ByteString.copyFromUtf8("opaque")),
+    ).build()
+
+    @Test
+    fun `an undecryptable packet does not create a node`() = runTest {
+        val (store, router) = connected()
+        router.handle(encryptedFrom(alice))
+        assertFalse(alice in store.nodes.value)
+    }
+
+    @Test
+    fun `an undecryptable packet still refreshes a node we already know`() = runTest {
+        val (store, router) = connected()
+        router.handle(text(alice, MeshConstants.BROADCAST_ADDR, "hi"))
+        router.handle(encryptedFrom(alice))
+        assertTrue(alice in store.nodes.value)
+    }
+
+    // --------------------------------------------------------------------- admin
+
+    private fun adminReply(from: Int, to: Int) = packet(
+        from, to, PortNum.ADMIN_APP,
+        AdminProtos.AdminMessage.newBuilder()
+            .setGetConfigResponse(
+                org.meshtastic.proto.ConfigProtos.Config.newBuilder()
+                    .setLora(
+                        org.meshtastic.proto.ConfigProtos.Config.LoRaConfig.newBuilder()
+                            .setTxPower(30),
+                    ),
+            )
+            .build()
+            .toByteString(),
+    )
+
+    @Test
+    fun `an admin reply from our own radio is delivered`() = runTest {
+        val (_, router) = connected()
+        router.handle(adminReply(from = self, to = self))
+        assertEquals(1, events.adminReplies.size)
+    }
+
+    @Test
+    fun `an admin packet from another node is ignored`() = runTest {
+        val (_, router) = connected()
+        router.handle(adminReply(from = alice, to = self))
+        assertTrue(events.adminReplies.isEmpty())
+    }
+
+    @Test
+    fun `admin packets are ignored before we know which node is ours`() = runTest {
+        val router = PacketRouter(newStore(), events) { now }
+        router.handle(adminReply(from = 0, to = self))
+        assertTrue(events.adminReplies.isEmpty())
+    }
 
     // ------------------------------------------------------------------ messages
 

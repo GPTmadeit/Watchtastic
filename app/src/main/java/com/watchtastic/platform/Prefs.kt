@@ -25,6 +25,7 @@ class Prefs(context: Context) {
         const val KEY_SHARE_LOCATION = "share_location"
         const val KEY_HAPTICS = "haptics"
         const val KEY_NOTIFY_CHANNELS = "notify_channels"
+        const val KEY_ALERT_KNOWN_ONLY = "alert_known_only"
         const val KEY_IMPERIAL = "imperial_units"
         const val KEY_CANNED = "canned_messages"
         const val KEY_MUTED_CHANNELS = "muted_channels"
@@ -63,6 +64,13 @@ class Prefs(context: Context) {
 
     private val _notifyChannels = MutableStateFlow(sp.getBoolean(KEY_NOTIFY_CHANNELS, true))
     val notifyChannels: StateFlow<Boolean> = _notifyChannels.asStateFlow()
+
+    /**
+     * Buzz only for senders the app can vouch for: favourites, and direct messages whose
+     * sender was verified by PKI. Everyone else still arrives, just silently.
+     */
+    private val _alertKnownOnly = MutableStateFlow(sp.getBoolean(KEY_ALERT_KNOWN_ONLY, false))
+    val alertKnownOnly: StateFlow<Boolean> = _alertKnownOnly.asStateFlow()
 
     private val _imperialUnits = MutableStateFlow(sp.getBoolean(KEY_IMPERIAL, false))
     val imperialUnits: StateFlow<Boolean> = _imperialUnits.asStateFlow()
@@ -134,6 +142,8 @@ class Prefs(context: Context) {
     fun setShareLocation(value: Boolean) = putBool(KEY_SHARE_LOCATION, value, _shareLocation)
 
     fun setHaptics(value: Boolean) = putBool(KEY_HAPTICS, value, _haptics)
+
+    fun setAlertKnownOnly(value: Boolean) = putBool(KEY_ALERT_KNOWN_ONLY, value, _alertKnownOnly)
 
     fun setNotifyChannels(value: Boolean) = putBool(KEY_NOTIFY_CHANNELS, value, _notifyChannels)
 

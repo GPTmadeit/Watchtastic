@@ -9,6 +9,13 @@ import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
 
+/**
+ * Largest update we will download. The app is a few megabytes; the cap exists so an
+ * oversized or endless response cannot fill the watch's storage before the signature
+ * check ever gets to reject it.
+ */
+internal const val MAX_APK_BYTES = 50L * 1024 * 1024
+
 /** One published APK, wherever it came from. */
 data class RemoteBuild(
     val downloadUrl: String,
@@ -110,6 +117,7 @@ class GitHubReleaseClient(
                 throw IOException("GitHub returned HTTP ${connection.responseCode}")
             }
             val total = connection.contentLengthLong
+            if (total > MAX_APK_BYTES) throw IOException("Update is too large")
             destination.parentFile?.mkdirs()
             var written = 0L
             connection.inputStream.use { input ->
@@ -120,6 +128,8 @@ class GitHubReleaseClient(
                         if (read < 0) break
                         output.write(buffer, 0, read)
                         written += read
+                        // Content-Length can be absent or untrue, so count what arrives.
+                        if (written > MAX_APK_BYTES) throw IOException("Update is too large")
                         onProgress(written, total)
                     }
                 }
