@@ -236,15 +236,21 @@ class UpdateManager(
             throw SecurityException("That APK is ${remote.packageName}, not this app")
         }
 
-        val remoteVersion = Version.parse(remote.versionName.orEmpty())
-        if (remoteVersion != null && remoteVersion < currentVersion) {
-            throw SecurityException("That build ($remoteVersion) is older than this one")
-        }
-
         val mine = pm.getPackageInfo(
             context.packageName,
             PackageManager.GET_SIGNING_CERTIFICATES,
         )
+
+        // versionCode is what Android itself uses to decide an install is a downgrade, and
+        // unlike versionName it is always a number. Comparing only the name meant an APK
+        // whose name didn't parse skipped the check entirely.
+        if (remote.longVersionCode < mine.longVersionCode) {
+            throw SecurityException("That build is older than this one")
+        }
+        val remoteVersion = Version.parse(remote.versionName.orEmpty())
+        if (remoteVersion != null && remoteVersion < currentVersion) {
+            throw SecurityException("That build ($remoteVersion) is older than this one")
+        }
         val remoteCerts = remote.signingInfo?.fingerprints()
         val myCerts = mine.signingInfo?.fingerprints()
 
