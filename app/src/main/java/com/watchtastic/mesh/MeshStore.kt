@@ -294,11 +294,32 @@ class MeshStore(
         requestSave()
     }
 
-    fun upsertWaypoint(waypoint: Waypoint) {
+    /**
+     * Adds or updates a waypoint. Returns false when the update was refused.
+     *
+     * Waypoint ids travel in the clear, so anyone on the channel can re-broadcast an
+     * existing id with new coordinates. Without a check that quietly moves a rendezvous
+     * point, and the compass then walks the wearer to wherever the sender chose. Only the
+     * node that created a waypoint may change it, and nobody may claim a lock on behalf
+     * of another node.
+     */
+    fun upsertWaypoint(waypoint: Waypoint): Boolean {
+        if (waypoint.lockedTo != 0 && waypoint.lockedTo != waypoint.createdByNum) return false
+        var accepted = true
         _waypoints.update { current ->
-            current.filterNot { it.id == waypoint.id } + waypoint
+            val existing = current.firstOrNull { it.id == waypoint.id }
+            if (existing != null &&
+                existing.createdByNum != 0 &&
+                existing.createdByNum != waypoint.createdByNum
+            ) {
+                accepted = false
+                current
+            } else {
+                current.filterNot { it.id == waypoint.id } + waypoint
+            }
         }
-        requestSave()
+        if (accepted) requestSave()
+        return accepted
     }
 
     fun deleteWaypoint(id: Int) {

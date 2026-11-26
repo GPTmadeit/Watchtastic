@@ -4,6 +4,7 @@ import com.watchtastic.mesh.model.ChatMessage
 import com.watchtastic.mesh.model.MeshNode
 import com.watchtastic.mesh.model.MsgStatus
 import com.watchtastic.mesh.model.NodeMetrics
+import com.watchtastic.mesh.model.Waypoint
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -165,5 +166,41 @@ class MeshStoreTest {
         store.deleteMessage(1)
         store.deleteMessage(2) // inbound: not ours to delete this way
         assertEquals(listOf(2), store.messages.value.map { it.id })
+    }
+
+    // --------------------------------------------------------------- waypoints
+
+    private fun waypoint(id: Int, by: Int, lat: Double = 1.0, lockedTo: Int = 0) = Waypoint(
+        id = id,
+        name = "camp",
+        description = "",
+        latitude = lat,
+        longitude = 2.0,
+        lockedTo = lockedTo,
+        createdByNum = by,
+    )
+
+    @Test
+    fun `the creator can move its own waypoint`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        assertTrue(store.upsertWaypoint(waypoint(1, by = 7)))
+        assertTrue(store.upsertWaypoint(waypoint(1, by = 7, lat = 5.0)))
+        assertEquals(5.0, store.waypoints.value.single().latitude, 0.0)
+    }
+
+    @Test
+    fun `another node cannot move someone else's waypoint`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        store.upsertWaypoint(waypoint(1, by = 7))
+        assertFalse(store.upsertWaypoint(waypoint(1, by = 8, lat = 99.0)))
+        assertEquals(1.0, store.waypoints.value.single().latitude, 0.0)
+        assertEquals(7, store.waypoints.value.single().createdByNum)
+    }
+
+    @Test
+    fun `a waypoint cannot be locked to a different node`() = runTest {
+        val store = store(File(tmp.root, "s.json"))
+        assertFalse(store.upsertWaypoint(waypoint(1, by = 8, lockedTo = 7)))
+        assertTrue(store.waypoints.value.isEmpty())
     }
 }
